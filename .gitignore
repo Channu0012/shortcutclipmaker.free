@@ -1,0 +1,38 @@
+# Python Virtual Environment
+venv/
+env/
+ENV/
+.venv/
+
+# Environment Variables & Secrets
+.env
+.env.local
+.env.*.local
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Pytest / Unit Test Caches
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Generated Media & Temporary Caches
+storage/clips/*.mp4
+storage/clips/*.zip
+storage/temp/*
+storage/uploads/*
+!storage/clips/.gitkeep
+!storage/temp/.gitkeep
+!storage/uploads/.gitkeep
+
+# Operating System & Editor Files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/

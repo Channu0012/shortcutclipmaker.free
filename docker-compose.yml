@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  shortcut-studio:
+    build: .
+    container_name: shortcut-studio-app
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./storage/clips:/app/storage/clips
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped

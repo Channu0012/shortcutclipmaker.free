@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ShortCut Studio — AI AutoCut Long Video to Viral Shorts</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            brand: {
+              300: '#a5b4fc',
+              400: '#818cf8',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            },
+            surface: {
+              950: '#07090e',
+              900: '#0d111a',
+              850: '#131926',
+              800: '#1a2233',
+              750: '#222c42',
+            },
+          },
+        },
+      },
+    };
+  </script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="bg-surface-950 text-slate-100 min-h-screen font-sans antialiased selection:bg-brand-500 selection:text-white flex flex-col">
+
+  <!-- Sticky Top Command Header -->
+  <header class="h-14 border-b border-white/[0.07] bg-surface-950/95 backdrop-blur-md sticky top-0 z-50 px-4 lg:px-6 flex items-center justify-between gap-3">
+    <div class="flex items-center gap-3 min-w-0">
+      <button type="button" id="btnLogoHome" class="flex items-center gap-2.5 studio-pressable shrink-0 text-left">
+        <div class="w-8 h-8 rounded-lg bg-brand-600/15 border border-brand-500/35 flex items-center justify-center">
+          <i data-lucide="scissors" class="w-4 h-4 text-brand-400 -rotate-45"></i>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="font-extrabold text-sm tracking-tight text-white">SHORTCUT</span>
+          <span class="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-surface-850 text-brand-300 border border-white/[0.08]">PRO</span>
+        </div>
+      </button>
+
+      <!-- Workspace active video pill (shown in Studio Mode) -->
+      <div id="headerProjectMeta" class="hidden md:flex items-center gap-2 pl-3 border-l border-white/[0.08] min-w-0">
+        <span id="headerSourceBadge" class="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">YOUTUBE</span>
+        <span id="headerVideoTitle" class="text-xs font-medium text-slate-300 truncate max-w-[240px] lg:max-w-[340px]">Project Title</span>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-2 shrink-0">
+      <button type="button" id="btnNewProject" class="hidden studio-pressable items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-850 hover:bg-surface-800 text-xs font-semibold text-slate-200 border border-white/[0.08]">
+        <i data-lucide="plus" class="w-3.5 h-3.5 text-brand-400"></i>
+        <span>New Video</span>
+      </button>
+
+      <button type="button" id="btnApiSettings" class="studio-pressable hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-surface-900 hover:bg-surface-850 border border-white/[0.08] text-[11px] font-mono text-slate-300" title="Configure API Key">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+        <span id="apiKeyDisplay">API: 94981c...e89f</span>
+      </button>
+
+      <button type="button" id="btnClearStorage" class="studio-pressable flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-surface-900 hover:bg-rose-950/50 text-xs font-medium text-slate-400 hover:text-rose-300 border border-white/[0.08] hover:border-rose-500/30" title="Wipe rendered clips & cache">
+        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+        <span id="storageStatsLabel" class="hidden sm:inline font-mono text-[11px]">0 clips</span>
+      </button>
+
+      <button type="button" id="btnDownloadAllTop" class="studio-pressable flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-xs font-semibold text-white shadow-sm">
+        <i data-lucide="archive" class="w-3.5 h-3.5"></i>
+        <span class="hidden sm:inline">Export .ZIP</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- =========================================================
+       VIEW A: FOCUSED PROJECT LAUNCHER (INGEST & CONFIG)
+  ========================================================== -->
+  <main id="launcherView" class="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-10 space-y-6 animate-panel">
+    <div class="text-center space-y-2 max-w-2xl mx-auto">
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-surface-900 border border-white/[0.08] text-[11px] font-mono text-slate-300">
+        <i data-lucide="sparkles" class="w-3.5 h-3.5 text-brand-400"></i>
+        <span>AutoCut Engine v3.0 · TimedText + Local Whisper AI + FFmpeg 1080p</span>
+      </div>
+      <h1 class="text-2xl sm:text-4xl font-extrabold tracking-tight text-white">
+        Long Videos into Viral Shorts in Seconds
+      </h1>
+      <p class="text-xs sm:text-sm text-slate-400 leading-relaxed">
+        Paste any long-form YouTube link or drop a local MP4 recording. AutoCut finds the top 10–20 hooks, scores retention, syncs animated captions, and exports 9:16, 1:1, or 16:9 clips.
+      </p>
+    </div>
+
+    <!-- Main Ingest Card -->
+    <section class="bg-surface-900 border border-white/[0.08] rounded-2xl p-5 sm:p-6 space-y-5 shadow-2xl">
+      <!-- Source Tabs: YouTube URL vs Upload Video -->
+      <div class="flex items-center justify-between flex-wrap gap-3 pb-3 border-b border-white/[0.06]">
+        <div class="inline-flex p-1 rounded-xl bg-surface-950 border border-white/[0.07]">
+          <button type="button" id="tabSourceYoutube" class="source-tab-btn px-3.5 py-1.5 rounded-lg bg-brand-600 text-white text-xs font-semibold flex items-center gap-1.5 studio-pressable">
+            <i data-lucide="youtube" class="w-3.5 h-3.5"></i>
+            <span>YouTube Link</span>
+          </button>
+          <button type="button" id="tabSourceUpload" class="source-tab-btn px-3.5 py-1.5 rounded-lg text-slate-400 hover:text-white text-xs font-semibold flex items-center gap-1.5 studio-pressable">
+            <i data-lucide="upload-cloud" class="w-3.5 h-3.5"></i>
+            <span>Upload MP4 / Video</span>
+          </button>
+        </div>
+        <span class="text-[11px] font-mono text-slate-500">Supports podcasts, interviews, lectures up to 3 hrs</span>
+      </div>
+
+      <form id="clipForm" class="space-y-5">
+        <!-- YouTube URL Input Mode -->
+        <div id="youtubeSourcePanel" class="space-y-3">
+          <div class="relative flex items-center">
+            <div class="absolute left-3.5 text-rose-500 pointer-events-none">
+              <i data-lucide="link-2" class="w-4 h-4"></i>
+            </div>
+            <input
+              type="text"
+              id="urlInput"
+              value="https://www.youtube.com/watch?v=UF8uR6Z6KLc"
+              placeholder="https://www.youtube.com/watch?v=... or youtu.be/..."
+              class="w-full bg-surface-950 border border-white/[0.1] rounded-xl py-3 pl-10 pr-24 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/40 font-mono"
+            />
+            <button type="button" id="btnPaste" class="studio-pressable absolute right-2 px-2.5 py-1.5 rounded-lg bg-surface-850 hover:bg-surface-800 border border-white/[0.08] text-xs font-medium text-slate-300 flex items-center gap-1">
+              <i data-lucide="clipboard" class="w-3.5 h-3.5 text-slate-400"></i>
+              <span>Paste</span>
+            </button>
+          </div>
+
+          <!-- Showcase Presets -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 pt-1">
+            <button type="button" class="sample-chip studio-pressable text-left p-2.5 rounded-xl bg-surface-950 hover:bg-surface-850 border border-white/[0.07] hover:border-brand-500/40" data-url="https://www.youtube.com/watch?v=UF8uR6Z6KLc">
+              <div class="flex items-center justify-between text-[11px] font-mono text-rose-400 mb-0.5">
+                <span>LIVE YOUTUBE</span>
+                <span>15:04</span>
+              </div>
+              <div class="text-xs font-semibold text-white truncate">Steve Jobs Stanford Speech</div>
+            </button>
+            <button type="button" class="sample-chip studio-pressable text-left p-2.5 rounded-xl bg-surface-950 hover:bg-surface-850 border border-white/[0.07] hover:border-brand-500/40" data-url="demo://creator-podcast">
+              <div class="flex items-center justify-between text-[11px] font-mono text-emerald-400 mb-0.5">
+                <span>INSTANT DEMO</span>
+                <span>10:20</span>
+              </div>
+              <div class="text-xs font-semibold text-white truncate">Creator Economy Masterclass</div>
+            </button>
+            <button type="button" class="sample-chip studio-pressable text-left p-2.5 rounded-xl bg-surface-950 hover:bg-surface-850 border border-white/[0.07] hover:border-brand-500/40" data-url="demo://huberman-dopamine">
+              <div class="flex items-center justify-between text-[11px] font-mono text-cyan-400 mb-0.5">
+                <span>INSTANT DEMO</span>
+                <span>08:00</span>
+              </div>
+              <div class="text-xs font-semibold text-white truncate">Huberman: Dopamine Focus</div>
+            </button>
+            <button type="button" class="sample-chip studio-pressable text-left p-2.5 rounded-xl bg-surface-950 hover:bg-surface-850 border border-white/[0.07] hover:border-brand-500/40" data-url="demo://hormozi-offers">
+              <div class="flex items-center justify-between text-[11px] font-mono text-amber-400 mb-0.5">
+                <span>INSTANT DEMO</span>
+                <span>06:30</span>
+              </div>
+              <div class="text-xs font-semibold text-white truncate">Hormozi: $100M Value Offers</div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Local Upload Panel -->
+        <div id="uploadSourcePanel" class="hidden">
+          <label for="fileUploadInput" id="dropZone" class="flex flex-col items-center justify-center border-2 border-dashed border-white/[0.12] hover:border-brand-500/60 bg-surface-950 rounded-xl p-6 cursor-pointer transition-colors">
+            <div class="w-10 h-10 rounded-full bg-brand-600/15 border border-brand-500/30 flex items-center justify-center mb-2">
+              <i data-lucide="film" class="w-5 h-5 text-brand-400"></i>
+            </div>
+            <p class="text-xs sm:text-sm font-semibold text-white" id="uploadLabelText">Drop any MP4, MOV, MKV, or WEBM file here</p>
+            <p class="text-[11px] text-slate-500 mt-1">Processed locally with FFmpeg + Faster-Whisper AI speech-to-text</p>
+            <input type="file" id="fileUploadInput" accept=".mp4,.mov,.mkv,.webm,.m4v,video/*" class="hidden" />
+          </label>
+        </div>
+
+        <!-- AutoCut Configuration Grid -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+          <div class="space-y-1.5">
+            <label class="text-[11px] font-semibold text-slate-400 flex items-center gap-1.5">
+              <i data-lucide="layers" class="w-3.5 h-3.5 text-brand-400"></i>
+              <span>Clips to Extract</span>
+            </label>
+            <select id="clipsCountSelect" class="w-full bg-surface-950 border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-brand-500 font-mono">
+              <option value="10">10 Clips (Focused)</option>
+              <option value="12" selected>12 Clips (Optimal)</option>
+              <option value="15">15 Clips (Deep Scan)</option>
+              <option value="20">20 Clips (Full Podcast)</option>
+            </select>
+          </div>
+
+          <div class="space-y-1.5">
+            <label class="text-[11px] font-semibold text-slate-400 flex items-center gap-1.5">
+              <i data-lucide="clock" class="w-3.5 h-3.5 text-emerald-400"></i>
+              <span>Target Clip Length</span>
+            </label>
+            <select id="durationSelect" class="w-full bg-surface-950 border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-brand-500 font-mono">
+              <option value="30">15s – 40s (Quick Hooks)</option>
+              <option value="45" selected>30s – 60s (Viral Shorts)</option>
+              <option value="75">60s – 90s (Extended Reels)</option>
+              <option value="150">2 – 3 Min (Mini Story)</option>
+              <option value="210">3 – 4 Min (Deep Dive Chapter)</option>
+            </select>
+          </div>
+
+          <div class="space-y-1.5">
+            <label class="text-[11px] font-semibold text-slate-400 flex items-center gap-1.5">
+              <i data-lucide="crop" class="w-3.5 h-3.5 text-cyan-400"></i>
+              <span>Frame & Aspect Layout</span>
+            </label>
+            <select id="layoutSelect" class="w-full bg-surface-950 border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-brand-500">
+              <option value="blur_margins" selected>9:16 Cinematic Blur</option>
+              <option value="center_crop">9:16 Center Crop</option>
+              <option value="square_1_1">1:1 Square Feed</option>
+              <option value="landscape_16_9">16:9 Widescreen</option>
+              <option value="split_screen">9:16 Split Screen</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Visual Caption Preset Selector (Swatches!) -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="text-[11px] font-semibold text-slate-400 flex items-center gap-1.5">
+              <i data-lucide="type" class="w-3.5 h-3.5 text-amber-400"></i>
+              <span>Dynamic Subtitle Style</span>
+            </label>
+            <select id="captionSelect" class="hidden">
+              <option value="hormozi" selected>hormozi</option>
+              <option value="mrbeast">mrbeast</option>
+              <option value="tiktok">tiktok</option>
+              <option value="neon">neon</option>
+              <option value="minimal">minimal</option>
+              <option value="podcast">podcast</option>
+            </select>
+            <label class="inline-flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer">
+              <input type="checkbox" id="chkHookBanner" checked class="rounded border-white/20 bg-surface-950 text-brand-500 focus:ring-0" />
+              <span>Burn Top Hook Banner</span>
+            </label>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2" id="launcherCaptionSwatches">
+            <button type="button" class="caption-swatch active studio-pressable p-2.5 rounded-xl bg-surface-950 border border-white/[0.08] text-left" data-style="hormozi">
+              <div class="text-[11px] font-extrabold tracking-tight uppercase"><span class="text-white">THE </span><span class="px-1 rounded bg-emerald-500 text-black">SECRET</span></div>
+              <div class="text-[10px] text-slate-400 mt-1">Hormozi Pill</div>
+            </button>
+            <button type="button" class="caption-swatch studio-pressable p-2.5 rounded-xl bg-surface-950 border border-white/[0.08] text-left" data-style="mrbeast">
+              <div class="text-[11px] font-extrabold tracking-tight uppercase"><span class="text-yellow-300">WAIT </span><span class="text-rose-500">WHAT?!</span></div>
+              <div class="text-[10px] text-slate-400 mt-1">MrBeast Pop</div>
+            </button>
+            <button type="button" class="caption-swatch studio-pressable p-2.5 rounded-xl bg-surface-950 border border-white/[0.08] text-left" data-style="tiktok">
+              <div class="text-[11px] font-bold"><span class="text-white">Go </span><span class="text-[#FE2C55]">viral</span><span class="text-white"> fast</span></div>
+              <div class="text-[10px] text-slate-400 mt-1">TikTok Pink</div>
+            </button>
+            <button type="button" class="caption-swatch studio-pressable p-2.5 rounded-xl bg-surface-950 border border-white/[0.08] text-left" data-style="neon">
+              <div class="text-[11px] font-extrabold uppercase"><span class="text-cyan-300">10X </span><span class="text-fuchsia-400">GROWTH</span></div>
+              <div class="text-[10px] text-slate-400 mt-1">Cyber Neon</div>
+            </button>
+            <button type="button" class="caption-swatch studio-pressable p-2.5 rounded-xl bg-surface-950 border border-white/[0.08] text-left" data-style="minimal">
+              <div class="text-[11px] font-semibold"><span class="px-1.5 py-0.5 rounded bg-black/80 text-white">Clean text</span></div>
+              <div class="text-[10px] text-slate-400 mt-1">Minimal Pro</div>
+            </button>
+            <button type="button" class="caption-swatch studio-pressable p-2.5 rounded-xl bg-surface-950 border border-white/[0.08] text-left" data-style="podcast">
+              <div class="text-[11px] font-bold"><span class="text-white">Real </span><span class="text-amber-400">talk</span></div>
+              <div class="text-[10px] text-slate-400 mt-1">Deep Podcast</div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Primary Action CTA -->
+        <div class="flex flex-col sm:flex-row gap-2.5 pt-1">
+          <button type="submit" id="btnSubmit" class="studio-pressable flex-1 py-3.5 px-6 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-brand-600/20">
+            <i data-lucide="wand-2" class="w-4 h-4"></i>
+            <span>AutoCut & Discover Viral Clips</span>
+          </button>
+          <button type="button" id="btnQuickDemo" class="studio-pressable px-4 py-3.5 rounded-xl bg-surface-850 hover:bg-surface-800 border border-white/[0.08] text-xs font-semibold text-slate-200 flex items-center justify-center gap-1.5">
+            <i data-lucide="play-circle" class="w-4 h-4 text-emerald-400"></i>
+            <span>Instant Studio Demo</span>
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Existing Rendered Library on Disk (Populated dynamically from /api/clips) -->
+    <section id="existingLibrarySection" class="hidden bg-surface-900 border border-white/[0.07] rounded-2xl p-4 space-y-3">
+      <div class="flex items-center justify-between">
+        <span class="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+          <i data-lucide="folder-check" class="w-4 h-4 text-emerald-400"></i>
+          <span>Rendered Clips Library (<span id="libraryCountBadge">0</span>)</span>
+        </span>
+        <span class="text-[11px] text-slate-500">Click to preview or download existing exports</span>
+      </div>
+      <div id="libraryGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5"></div>
+    </section>
+  </main>
+
+  <!-- =========================================================
+       VIEW B: REAL-TIME PIPELINE LOADING STATE
+  ========================================================== -->
+  <section id="processingSection" class="hidden flex-1 flex items-center justify-center px-4 py-12 animate-panel">
+    <div class="max-w-lg w-full bg-surface-900 border border-white/[0.08] rounded-2xl p-6 sm:p-8 space-y-5 shadow-2xl">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-brand-600/15 border border-brand-500/30 flex items-center justify-center">
+            <div class="w-5 h-5 rounded-full border-2 border-brand-400 border-t-transparent animate-spin"></div>
+          </div>
+          <div>
+            <h3 id="processStatusTitle" class="text-sm sm:text-base font-bold text-white">Initializing AutoCut Pipeline...</h3>
+            <p id="processStatusDesc" class="text-xs text-slate-400 mt-0.5">Connecting to video stream...</p>
+          </div>
+        </div>
+        <span id="processElapsedTimer" class="text-xs font-mono text-brand-300 font-semibold bg-surface-950 px-2.5 py-1 rounded-lg border border-white/[0.07]">0.0s</span>
+      </div>
+
+      <!-- Progress Bar -->
+      <div class="space-y-1.5">
+        <div class="w-full h-2 bg-surface-950 rounded-full overflow-hidden border border-white/[0.06]">
+          <div id="progressBar" class="h-full bg-brand-500 transition-all duration-300" style="width: 12%"></div>
+        </div>
+        <div class="flex items-center justify-between text-[11px] font-mono">
+          <span id="step1" class="text-brand-400 font-semibold">1. Ingest</span>
+          <span id="step2" class="text-slate-500">2. Transcript</span>
+          <span id="step3" class="text-slate-500">3. AI Score</span>
+          <span id="step4" class="text-slate-500">4. Ready</span>
+        </div>
+      </div>
+
+      <div class="flex justify-end pt-1">
+        <button type="button" id="btnCancelAnalysis" class="studio-pressable px-3 py-1.5 rounded-lg bg-surface-850 hover:bg-surface-800 border border-white/[0.08] text-xs text-slate-300">Cancel</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========================================================
+       VIEW C: PRO 3-PANE AUTOCUT STUDIO WORKSPACE
+  ========================================================== -->
+  <section id="resultsSection" class="hidden flex-1 max-w-[1440px] w-full mx-auto px-4 lg:px-6 py-4 space-y-4 animate-panel">
+
+    <!-- Top Video Strip & Batch Toolbar -->
+    <div class="bg-surface-900 border border-white/[0.08] rounded-xl p-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <div class="flex items-center gap-3 min-w-0">
+        <img id="videoThumb" src="" alt="Source Video" class="w-16 h-10 object-cover rounded-lg border border-white/[0.08] bg-surface-950 shrink-0" />
+        <div class="min-w-0">
+          <h2 id="videoTitle" class="text-xs sm:text-sm font-bold text-white truncate">Analyzed Video</h2>
+          <div class="flex flex-wrap items-center gap-2 text-[11px] text-slate-400 font-mono mt-0.5">
+            <span id="videoChannel" class="text-slate-300 font-sans font-medium">Channel</span>
+            <span>·</span>
+            <span>Duration: <strong id="timelineDurationBadge" class="text-slate-200">0:00</strong></span>
+            <span>·</span>
+            <span id="clipsFoundBadge" class="text-emerald-400 font-semibold">12 Viral Clips</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2 shrink-0">
+        <button type="button" id="btnBatchRenderAll" class="studio-pressable px-3 py-1.5 rounded-lg bg-surface-850 hover:bg-surface-800 text-slate-200 font-semibold text-xs border border-white/[0.08] flex items-center gap-1.5">
+          <i data-lucide="layers" class="w-3.5 h-3.5 text-brand-400"></i>
+          <span id="batchBtnLabel">Batch Render Selected (0)</span>
+        </button>
+        <button type="button" id="btnDownloadZip" class="studio-pressable px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center gap-1.5">
+          <i data-lucide="download" class="w-3.5 h-3.5"></i>
+          <span>Download .ZIP Pack</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Proportional Full-Video Retention Heatmap Bar -->
+    <div class="bg-surface-900 border border-white/[0.08] rounded-xl px-3.5 py-2.5 space-y-1.5">
+      <div class="flex items-center justify-between text-[11px]">
+        <span class="font-semibold text-slate-300 flex items-center gap-1.5">
+          <i data-lucide="activity" class="w-3.5 h-3.5 text-brand-400"></i>
+          <span>Full-Timeline Viral Retention Map</span>
+        </span>
+        <span class="text-slate-500 font-mono">Click any highlighted segment to inspect & edit</span>
+      </div>
+      <div id="timelineTrackContainer" class="relative w-full h-7 bg-surface-950 rounded-lg border border-white/[0.06] overflow-visible">
+        <div id="timelineTrack" class="relative w-full h-full"></div>
+      </div>
+    </div>
+
+    <!-- 3-Pane Desktop Studio Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+
+      <!-- PANE 1 (Left): Viral Clips Queue (4 cols) -->
+      <div class="lg:col-span-4 bg-surface-900 border border-white/[0.08] rounded-xl p-3 space-y-3">
+        <div class="flex items-center justify-between gap-2">
+          <label class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-300 cursor-pointer">
+            <input type="checkbox" id="chkSelectAllClips" class="rounded border-white/20 bg-surface-950 text-brand-500 focus:ring-0" />
+            <span>Clips Queue (<span id="countAll">0</span>)</span>
+          </label>
+          <select id="sortClipsSelect" class="bg-surface-950 border border-white/[0.08] rounded-md px-2 py-1 text-[11px] text-slate-300 font-mono focus:outline-none">
+            <option value="timeline">Sort: Timeline ↑</option>
+            <option value="score">Sort: Virality Score ↓</option>
+          </select>
+        </div>
+
+        <!-- Dynamic Category Filter Pills -->
+        <div id="categoryFilterBar" class="flex flex-wrap gap-1.5 text-[11px]"></div>
+
+        <!-- Scrollable Queue List -->
+        <div id="clipCardsList" class="space-y-2 max-h-[68vh] overflow-y-auto pr-1"></div>
+      </div>
+
+      <!-- PANE 2 (Center): Live Device Canvas & Real Waveform (4 cols) -->
+      <div class="lg:col-span-4 lg:sticky lg:top-16 bg-surface-900 border border-white/[0.08] rounded-xl p-4 flex flex-col items-center space-y-3">
+
+        <!-- Canvas Toolbar: Aspect Switcher & Caption Style Quick Pick -->
+        <div class="w-full flex items-center justify-between gap-2">
+          <div class="inline-flex p-0.5 rounded-lg bg-surface-950 border border-white/[0.08] text-[11px]">
+            <button type="button" class="aspect-btn active px-2.5 py-1 rounded-md bg-brand-600 text-white font-bold studio-pressable" data-aspect="9:16">9:16</button>
+            <button type="button" class="aspect-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-white font-medium studio-pressable" data-aspect="1:1">1:1</button>
+            <button type="button" class="aspect-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-white font-medium studio-pressable" data-aspect="16:9">16:9</button>
+          </div>
+
+          <div class="flex items-center gap-1.5">
+            <select id="workspaceCaptionSelect" class="bg-surface-950 border border-white/[0.08] rounded-lg px-2 py-1 text-[11px] text-slate-200 focus:outline-none focus:border-brand-500">
+              <option value="hormozi">Hormozi Pill</option>
+              <option value="mrbeast">MrBeast Pop</option>
+              <option value="tiktok">TikTok Pink</option>
+              <option value="neon">Cyber Neon</option>
+              <option value="minimal">Minimal Box</option>
+              <option value="podcast">Deep Podcast</option>
+            </select>
+            <button type="button" id="btnPlaybackSpeed" class="px-2 py-1 rounded-lg bg-surface-950 border border-white/[0.08] text-[11px] font-mono text-slate-300 hover:text-white studio-pressable" title="Playback Speed">1x</button>
+          </div>
+        </div>
+
+        <!-- Device Preview Frame -->
+        <div id="deviceFrame" class="w-full max-w-[265px] aspect-[9/16] bg-black rounded-[28px] p-2 border-2 border-surface-750 shadow-2xl relative overflow-hidden flex flex-col">
+          <div class="relative w-full h-full rounded-[20px] overflow-hidden bg-surface-950 flex items-center justify-center">
+
+            <!-- HTML5 MP4 Player -->
+            <video id="previewVideo" class="w-full h-full object-cover hidden" controls playsinline muted loop></video>
+
+            <!-- YouTube Embed Source Preview (shown for YouTube before render) -->
+            <iframe id="sourceYoutubeFrame" class="w-full h-full object-cover hidden rounded-[20px]" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+
+            <!-- Floating Mute/Unmute Toggle -->
+            <button type="button" id="btnToggleSound" class="hidden studio-pressable absolute top-3 right-3 z-40 bg-surface-950/85 hover:bg-surface-800 text-white p-2 rounded-full border border-white/[0.15] backdrop-blur-md" title="Unmute / Mute Audio">
+              <i data-lucide="volume-x" id="soundIcon" class="w-3.5 h-3.5 text-amber-400"></i>
+            </button>
+
+            <!-- Pre-Render Live Style Preview Poster -->
+            <div id="playerPlaceholder" class="absolute inset-0 flex flex-col justify-between p-4 text-center bg-gradient-to-b from-surface-900 via-surface-950 to-black">
+              <div class="space-y-2 pt-2">
+                <span id="stageCategoryPill" class="inline-block px-2 py-0.5 rounded bg-brand-500/15 border border-brand-500/30 text-brand-300 text-[10px] font-bold uppercase tracking-wider">VIRAL CLIP</span>
+                <!-- Live Hook Banner Mockup -->
+                <div id="liveBannerPreview" class="mx-auto max-w-[92%] px-3 py-1.5 rounded-lg bg-surface-950/90 border border-white/[0.12] text-[11px] font-extrabold text-emerald-400 uppercase tracking-tight leading-snug">
+                  Hook Banner Preview
+                </div>
+              </div>
+
+              <div class="space-y-1.5 px-2">
+                <p id="stageTimestamp" class="text-[11px] font-mono text-slate-400">0:00 – 0:00 (0s)</p>
+                <div id="liveCaptionPreview" class="text-sm font-black uppercase tracking-tight leading-tight text-white drop-shadow">
+                  LIVE <span class="px-1.5 py-0.5 rounded bg-emerald-500 text-black">CAPTION</span> STYLE
+                </div>
+                <p id="renderStatusHint" class="text-[10px] font-mono text-slate-500">Click below to cut & burn 1080p MP4</p>
+              </div>
+
+              <button type="button" id="btnStageRender" class="studio-pressable w-full py-2.5 px-3 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md">
+                <i data-lucide="scissors" class="w-3.5 h-3.5"></i>
+                <span>Cut & Render Clip</span>
+              </button>
+            </div>
+
+            <!-- In-Stage Rendering Spinner Overlay -->
+            <div id="stageRenderingOverlay" class="hidden absolute inset-0 z-50 bg-surface-950/90 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center space-y-2.5">
+              <div class="w-8 h-8 rounded-full border-2 border-brand-400 border-t-transparent animate-spin"></div>
+              <p class="text-xs font-bold text-white">Cutting & Burning Subtitles...</p>
+              <p id="stageRenderTimer" class="text-[11px] font-mono text-brand-300">0.0s elapsed</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Audio Waveform Energy Scrubber -->
+        <div class="w-full bg-surface-950 border border-white/[0.07] rounded-xl p-2.5 space-y-1.5">
+          <div class="flex items-center justify-between text-[10px] font-mono text-slate-400">
+            <span class="text-slate-300 font-semibold">Audio Energy Scrubber</span>
+            <span id="waveformTimecode" class="text-brand-300">0:00 / 0:00</span>
+          </div>
+          <div id="waveformContainer" class="relative w-full h-8 flex items-end gap-[2px] px-1 py-1 bg-surface-900/60 rounded cursor-pointer overflow-hidden border border-white/[0.04]">
+            <div id="waveformPlayhead" class="absolute top-0 bottom-0 w-0.5 bg-emerald-400 z-20 pointer-events-none" style="left: 0%"></div>
+          </div>
+        </div>
+
+        <!-- Primary Download Button -->
+        <button type="button" id="btnDownloadClip" class="studio-pressable w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20">
+          <i data-lucide="download" class="w-4 h-4"></i>
+          <span>Download MP4 Clip</span>
+        </button>
+      </div>
+
+      <!-- PANE 3 (Right): Clip Inspector, Boundary Trimmer & Editable Transcript (4 cols) -->
+      <div class="lg:col-span-4 space-y-3">
+
+        <!-- Hook Title & Banner Card -->
+        <div class="bg-surface-900 border border-white/[0.08] rounded-xl p-3.5 space-y-2">
+          <div class="flex items-center justify-between text-[11px]">
+            <label for="inputHookTitle" class="font-bold text-slate-300 flex items-center gap-1.5">
+              <i data-lucide="heading" class="w-3.5 h-3.5 text-brand-400"></i>
+              <span>Hook Title Banner</span>
+            </label>
+            <label class="inline-flex items-center gap-1 text-slate-400 cursor-pointer">
+              <input type="checkbox" id="chkWorkspaceBanner" checked class="rounded border-white/20 bg-surface-950 text-brand-500 focus:ring-0" />
+              <span>Show Top Banner</span>
+            </label>
+          </div>
+          <input type="text" id="inputHookTitle" class="w-full bg-surface-950 border border-white/[0.08] rounded-lg px-3 py-2 text-xs font-semibold text-white focus:outline-none focus:border-brand-500" placeholder="Enter viral hook banner title..." />
+        </div>
+
+        <!-- Precision Trimmer Card -->
+        <div class="bg-surface-900 border border-white/[0.08] rounded-xl p-3.5 space-y-2.5">
+          <div class="flex items-center justify-between text-xs">
+            <span class="font-bold text-slate-300 flex items-center gap-1.5">
+              <i data-lucide="scissors" class="w-3.5 h-3.5 text-brand-400"></i>
+              <span>Cut Boundaries</span>
+            </span>
+            <span id="trimmerDurationBadge" class="font-mono text-[11px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">0:45 (45s)</span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 font-mono text-[11px]">
+            <div class="space-y-1">
+              <span class="text-[10px] font-sans text-slate-400">Start (mm:ss)</span>
+              <div class="flex items-center bg-surface-950 border border-white/[0.08] rounded-lg overflow-hidden">
+                <button type="button" id="btnStartMinus5" class="px-1.5 py-1.5 hover:bg-surface-800 text-slate-400 hover:text-white">-5s</button>
+                <input type="text" id="inputStartTime" value="0:00" class="w-full bg-transparent text-center text-white font-bold focus:outline-none text-xs" />
+                <button type="button" id="btnStartPlus5" class="px-1.5 py-1.5 hover:bg-surface-800 text-slate-400 hover:text-white">+5s</button>
+              </div>
+            </div>
+            <div class="space-y-1">
+              <span class="text-[10px] font-sans text-slate-400">End (mm:ss)</span>
+              <div class="flex items-center bg-surface-950 border border-white/[0.08] rounded-lg overflow-hidden">
+                <button type="button" id="btnEndMinus5" class="px-1.5 py-1.5 hover:bg-surface-800 text-slate-400 hover:text-white">-5s</button>
+                <input type="text" id="inputEndTime" value="0:45" class="w-full bg-transparent text-center text-white font-bold focus:outline-none text-xs" />
+                <button type="button" id="btnEndPlus5" class="px-1.5 py-1.5 hover:bg-surface-800 text-slate-400 hover:text-white">+5s</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between gap-1.5">
+            <div class="flex items-center gap-1">
+              <button type="button" class="btn-extend-clip studio-pressable px-2 py-1 rounded bg-surface-950 hover:bg-surface-800 border border-white/[0.07] text-[10px] font-mono text-slate-300" data-duration="45">45s</button>
+              <button type="button" class="btn-extend-clip studio-pressable px-2 py-1 rounded bg-surface-950 hover:bg-surface-800 border border-white/[0.07] text-[10px] font-mono text-slate-300" data-duration="90">90s</button>
+              <button type="button" class="btn-extend-clip studio-pressable px-2 py-1 rounded bg-surface-950 hover:bg-surface-800 border border-white/[0.07] text-[10px] font-mono text-slate-300" data-duration="180">3m</button>
+              <button type="button" class="btn-extend-clip studio-pressable px-2 py-1 rounded bg-surface-950 hover:bg-surface-800 border border-white/[0.07] text-[10px] font-mono text-slate-300" data-duration="240">4m</button>
+            </div>
+            <button type="button" id="btnRenderCustomCut" class="studio-pressable px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold flex items-center gap-1">
+              <i data-lucide="zap" class="w-3 h-3 fill-white"></i>
+              <span>Render Cut</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- AI Virality Scorecard Card -->
+        <div class="bg-surface-900 border border-white/[0.08] rounded-xl p-3.5 space-y-2.5">
+          <div class="flex items-center justify-between text-xs">
+            <span class="font-bold text-slate-300 flex items-center gap-1.5">
+              <i data-lucide="bar-chart-3" class="w-3.5 h-3.5 text-emerald-400"></i>
+              <span>AI Virality Breakdown</span>
+            </span>
+            <span id="inspectorScoreBadge" class="font-mono text-xs font-bold text-emerald-400">95/100</span>
+          </div>
+          <div class="grid grid-cols-3 gap-2 font-mono text-[11px]">
+            <div class="bg-surface-950 rounded-lg p-2 border border-white/[0.05]">
+              <div class="text-[10px] text-slate-500">Hook</div>
+              <div id="metricHookVal" class="text-brand-300 font-bold">95%</div>
+            </div>
+            <div class="bg-surface-950 rounded-lg p-2 border border-white/[0.05]">
+              <div class="text-[10px] text-slate-500">Retention</div>
+              <div id="metricRetentionVal" class="text-emerald-400 font-bold">93%</div>
+            </div>
+            <div class="bg-surface-950 rounded-lg p-2 border border-white/[0.05]">
+              <div class="text-[10px] text-slate-500">Energy</div>
+              <div id="metricEnergyVal" class="text-amber-400 font-bold">94%</div>
+            </div>
+          </div>
+          <p id="inspectorReasoning" class="text-[11px] text-slate-400 leading-relaxed bg-surface-950/60 rounded-lg p-2 border border-white/[0.04]">
+            High-curiosity opening with rhythmic cadence.
+          </p>
+        </div>
+
+        <!-- Interactive Click-to-Seek & Editable Transcript Card -->
+        <div class="bg-surface-900 border border-white/[0.08] rounded-xl p-3.5 space-y-2">
+          <div class="flex items-center justify-between text-xs">
+            <span class="font-bold text-slate-300 flex items-center gap-1.5">
+              <i data-lucide="subtitles" class="w-3.5 h-3.5 text-amber-400"></i>
+              <span>Interactive Transcript</span>
+            </span>
+            <button type="button" id="btnToggleEditWords" class="studio-pressable px-2 py-0.5 rounded bg-surface-950 hover:bg-surface-800 border border-white/[0.08] text-[10px] font-mono text-brand-300">
+              Edit Words
+            </button>
+          </div>
+          <p class="text-[10px] text-slate-500" id="transcriptHelpHint">Click any word to jump playback · Click "Edit Words" to correct spelling before render</p>
+          <div id="inspectorTranscriptBox" class="bg-surface-950 border border-white/[0.06] rounded-lg p-2.5 max-h-44 overflow-y-auto text-xs text-slate-200 leading-relaxed flex flex-wrap gap-1"></div>
+        </div>
+
+        <!-- SEO Copy Card -->
+        <div class="bg-surface-900 border border-white/[0.08] rounded-xl p-3.5 space-y-2">
+          <div class="flex items-center justify-between text-xs">
+            <span class="font-bold text-slate-300">YouTube Shorts / Reels SEO</span>
+            <button type="button" id="btnCopyMeta" class="studio-pressable px-2.5 py-1 rounded-lg bg-surface-850 hover:bg-surface-800 border border-white/[0.08] text-[11px] font-semibold text-brand-300 flex items-center gap-1">
+              <i data-lucide="copy" class="w-3 h-3"></i>
+              <span>Copy Pack</span>
+            </button>
+          </div>
+          <p id="seoPreviewText" class="text-[11px] font-mono text-slate-400 line-clamp-2">#shorts #viral #reels</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- API Key & Studio Settings Modal -->
+  <div id="settingsModal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="max-w-md w-full bg-surface-900 border border-white/[0.1] rounded-2xl p-5 space-y-4 shadow-2xl animate-panel">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-bold text-white flex items-center gap-2">
+          <i data-lucide="key" class="w-4 h-4 text-amber-400"></i>
+          <span>Studio API Key & Engine Settings</span>
+        </h3>
+        <button type="button" id="btnCloseSettings" class="text-slate-400 hover:text-white p-1">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+      <div class="space-y-2 text-xs">
+        <label for="inputSettingsApiKey" class="block text-slate-400 font-semibold">Active API Key</label>
+        <input type="text" id="inputSettingsApiKey" class="w-full bg-surface-950 border border-white/[0.1] rounded-lg px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-brand-500" placeholder="Enter API key..." />
+        <p class="text-[11px] text-slate-500">Stored in backend session config. Current max clip length: <span class="text-emerald-400 font-mono">360s (6 mins)</span>.</p>
+      </div>
+      <div class="flex justify-end gap-2 pt-1">
+        <button type="button" id="btnCancelSettings" class="px-3 py-1.5 rounded-lg bg-surface-850 text-xs text-slate-300">Close</button>
+        <button type="button" id="btnSaveSettings" class="studio-pressable px-4 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-xs font-semibold text-white">Save Key</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed bottom-5 right-5 z-50 transform translate-y-16 opacity-0 pointer-events-none transition-all duration-200">
+    <div id="toastBox" class="bg-surface-900 border border-brand-500/40 text-white px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2 text-xs font-semibold">
+      <i data-lucide="check-circle" id="toastIcon" class="w-4 h-4 text-emerald-400"></i>
+      <span id="toastMessage">Ready</span>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
