@@ -30,9 +30,12 @@ storage/uploads/*
 !storage/uploads/.gitkeep
 
 # Operating System & Editor Files
+.vercel
 .DS_Store
 Thumbs.db
 *.swp
 *.swo
 .vscode/
 .idea/
+
+.vercel

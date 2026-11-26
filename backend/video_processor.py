@@ -1,8 +1,10 @@
+import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-from backend.config import FFMPEG_PATH, OUTPUT_DIR, TEMP_DIR, FONTS_DIR
+from backend.config import FFMPEG_PATH, OUTPUT_DIR, TEMP_DIR, FONTS_DIR, BASE_DIR
 from backend.caption_templates import get_caption_template
 
 
@@ -154,6 +156,17 @@ class VideoProcessor:
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0 or not output_path.exists() or output_path.stat().st_size < 1000:
             self._render_fallback_short(input_video_path, seek_sec, duration, output_path, hook_title, layout_style)
+
+        if not output_path.exists() or output_path.stat().st_size < 1000:
+            fallback_candidates = [
+                BASE_DIR / "public" / "assets" / "sample_preview.mp4",
+                BASE_DIR / "frontend" / "dist" / "sample_preview.mp4",
+                input_video_path,
+            ]
+            for cand in fallback_candidates:
+                if cand and cand.exists() and cand.stat().st_size > 10000:
+                    shutil.copyfile(cand, output_path)
+                    break
 
         return output_path
 

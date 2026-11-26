@@ -27,21 +27,33 @@ def _load_dotenv(env_path: Path) -> None:
 
 _load_dotenv(BASE_DIR / ".env")
 
-OUTPUT_DIR = BASE_DIR / "storage" / "clips"
-TEMP_DIR = BASE_DIR / "storage" / "temp"
-UPLOADS_DIR = BASE_DIR / "storage" / "uploads"
+IS_VERCEL = bool(os.getenv("VERCEL") or os.getenv("AWS_LAMBDA_FUNCTION_NAME"))
+if IS_VERCEL:
+    STORAGE_BASE = Path("/tmp") / "storage"
+else:
+    STORAGE_BASE = BASE_DIR / "storage"
+
+OUTPUT_DIR = STORAGE_BASE / "clips"
+TEMP_DIR = STORAGE_BASE / "temp"
+UPLOADS_DIR = STORAGE_BASE / "uploads"
 FONTS_DIR = BASE_DIR / "backend" / "fonts"
 
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-TEMP_DIR.mkdir(parents=True, exist_ok=True)
-UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-FONTS_DIR.mkdir(parents=True, exist_ok=True)
+for p in (OUTPUT_DIR, TEMP_DIR, UPLOADS_DIR):
+    try:
+        p.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+
+try:
+    FONTS_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
 
 # FFmpeg binary
 try:
     FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
 except Exception:
-    FFMPEG_PATH = "ffmpeg"
+    FFMPEG_PATH = os.getenv("IMAGEIO_FFMPEG_EXE", "ffmpeg")
 
 # Configuration parameters
 MAX_VIDEO_DURATION_MINUTES = 180

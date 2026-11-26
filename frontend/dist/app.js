@@ -5,12 +5,12 @@ document.addEventListener("DOMContentLoaded", () => {
   };
   refreshIcons();
 
-  let API_BASE = (window.location.port === "8000" && window.location.protocol.startsWith("http"))
-    ? ""
-    : "http://127.0.0.1:8000";
+  let API_BASE = window.location.protocol.startsWith("http") ? "" : "http://127.0.0.1:8000";
 
   async function resolveWorkingApiBase() {
-    const candidates = [API_BASE, "http://127.0.0.1:8000", "http://localhost:8000"];
+    const candidates = window.location.protocol.startsWith("http")
+      ? ["", API_BASE, "http://127.0.0.1:8000", "http://localhost:8000"]
+      : ["http://127.0.0.1:8000", "http://localhost:8000", ""];
     for (const base of candidates) {
       try {
         const res = await fetch(`${base}/api/health`);

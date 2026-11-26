@@ -123,6 +123,7 @@ def _run_analysis_sync(
 
 
 @app.get("/api/health")
+@app.get("/health")
 def health_check():
     return {
         "status": "healthy",
@@ -133,11 +134,13 @@ def health_check():
 
 
 @app.get("/api/caption-styles")
+@app.get("/caption-styles")
 def get_caption_styles():
     return list_caption_templates()
 
 
 @app.get("/api/sample-demo")
+@app.get("/sample-demo")
 def get_sample_demo(
     preset: str = Query("creator-podcast"),
     target_duration: int = Query(45, ge=15, le=360),
@@ -151,6 +154,7 @@ def get_sample_demo(
 
 
 @app.post("/api/analyze")
+@app.post("/analyze")
 def analyze_video(req: AnalyzeRequest):
     """Synchronously analyzes a YouTube URL, local:// upload, or demo:// preset."""
     try:
@@ -164,6 +168,7 @@ def analyze_video(req: AnalyzeRequest):
 
 
 @app.post("/api/analyze/start")
+@app.post("/analyze/start")
 def start_analyze_job(req: AnalyzeRequest):
     """Starts async analysis job with real live progress polling via GET /api/jobs/{job_id}."""
     if not VideoDownloader.is_valid_youtube_url(req.url.strip()):
@@ -273,6 +278,7 @@ async def upload_local_video(request: Request, filename: str = Query("studio_upl
 
 
 @app.get("/api/settings")
+@app.get("/settings")
 def get_settings():
     from backend.config import USER_API_KEY
     masked_key = f"{USER_API_KEY[:6]}...{USER_API_KEY[-4:]}" if len(USER_API_KEY) > 10 else USER_API_KEY
@@ -285,6 +291,7 @@ def get_settings():
 
 
 @app.post("/api/settings")
+@app.post("/settings")
 def update_settings(req: SettingsUpdate):
     import backend.config as cfg
     new_key = req.api_key.strip()
@@ -297,6 +304,7 @@ def update_settings(req: SettingsUpdate):
 
 
 @app.post("/api/generate-clip")
+@app.post("/generate-clip")
 def generate_clip(req: GenerateClipRequest):
     """Cuts, formats (9:16, 1:1, 16:9), burns animated ASS captions + hook banner, and returns downloadable MP4."""
     duration = float(req.end_time) - float(req.start_time)
@@ -406,6 +414,7 @@ def batch_generate(req: BatchGenerateRequest):
 
 
 @app.get("/api/download-all-zip")
+@app.get("/download-all-zip")
 def download_all_zip():
     """Packs all rendered MP4 clips in storage/clips into a downloadable .zip archive."""
     mp4_files = list(OUTPUT_DIR.glob("*.mp4"))
@@ -426,6 +435,7 @@ def download_all_zip():
 
 
 @app.post("/api/download-zip")
+@app.post("/download-zip")
 def download_selected_zip(req: ZipSelectionRequest):
     """Packs selected filenames (or all rendered clips if empty) into a .zip archive."""
     if req.filenames:
@@ -450,8 +460,11 @@ def download_selected_zip(req: ZipSelectionRequest):
 
 
 @app.get("/api/storage-stats")
+@app.get("/storage-stats")
 def storage_stats():
     mp4_files = list(OUTPUT_DIR.glob("*.mp4"))
+    if not mp4_files and (BASE_DIR / "storage" / "clips").exists():
+        mp4_files = list((BASE_DIR / "storage" / "clips").glob("*.mp4"))
     total_bytes = sum(f.stat().st_size for f in mp4_files)
     temp_bytes = sum(f.stat().st_size for f in TEMP_DIR.glob("*") if f.is_file())
     return {
@@ -470,6 +483,7 @@ def _safe_unlink(path: Path) -> bool:
 
 
 @app.delete("/api/clips/{filename}")
+@app.delete("/clips/{filename}")
 def delete_single_clip(filename: str):
     safe_name = Path(filename).name
     target = OUTPUT_DIR / safe_name
@@ -481,7 +495,9 @@ def delete_single_clip(filename: str):
 
 
 @app.delete("/api/clips")
+@app.delete("/clips")
 @app.post("/api/clear-storage")
+@app.post("/clear-storage")
 def clear_storage():
     """Wipes all generated clips, temp files, uploaded raw temp caches, and memory caches safely on Windows."""
     count = 0
@@ -504,8 +520,11 @@ def clear_storage():
 
 
 @app.get("/api/clips")
+@app.get("/clips")
 def list_clips():
     mp4_files = sorted(OUTPUT_DIR.glob("*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not mp4_files and (BASE_DIR / "storage" / "clips").exists():
+        mp4_files = sorted((BASE_DIR / "storage" / "clips").glob("*.mp4"), key=lambda p: p.stat().st_mtime, reverse=True)
     clips = []
     for f in mp4_files:
         clips.append({
@@ -519,20 +538,34 @@ def list_clips():
 
 
 @app.get("/api/assets/thumb/{filename}")
+@app.get("/assets/thumb/{filename}")
 def get_thumb_asset(filename: str):
     safe_name = Path(filename).name
     thumb_path = TEMP_DIR / safe_name
     if not thumb_path.exists():
-        raise HTTPException(status_code=404, detail="Thumbnail not found.")
+        fallback_thumb = BASE_DIR / "storage" / "temp" / safe_name
+        if fallback_thumb.exists():
+            thumb_path = fallback_thumb
+        else:
+            raise HTTPException(status_code=404, detail="Thumbnail not found.")
     return FileResponse(path=thumb_path, media_type="image/jpeg")
 
 
 @app.get("/api/clips/{filename}")
+@app.get("/clips/{filename}")
 def get_clip_file(filename: str, play: bool = False):
     safe_name = Path(filename).name
     file_path = OUTPUT_DIR / safe_name
     if not file_path.exists():
-        raise HTTPException(status_code=404, detail="Requested clip was not found.")
+        fallback_path = BASE_DIR / "storage" / "clips" / safe_name
+        if fallback_path.exists():
+            file_path = fallback_path
+        else:
+            fallback_public = BASE_DIR / "public" / "assets" / safe_name
+            if fallback_public.exists():
+                file_path = fallback_public
+            else:
+                raise HTTPException(status_code=404, detail="Requested clip was not found.")
 
     headers = {
         "Accept-Ranges": "bytes",
@@ -564,6 +597,9 @@ def get_uploaded_video(filename: str):
 
 
 frontend_dist = BASE_DIR / "frontend" / "dist"
+if not frontend_dist.exists() or not (frontend_dist / "index.html").exists():
+    frontend_dist = BASE_DIR / "public"
+
 if frontend_dist.exists():
     @app.middleware("http")
     async def no_cache_frontend(request, call_next):
