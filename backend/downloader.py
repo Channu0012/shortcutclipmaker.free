@@ -15,7 +15,7 @@ except ImportError:
 import yt_dlp
 from yt_dlp.utils import download_range_func
 
-from backend.config import BASE_DIR, COOKIES_PATH, FFMPEG_PATH, TEMP_DIR, UPLOADS_DIR
+from backend.config import BASE_DIR, COOKIES_PATH, FFMPEG_PATH, IS_VERCEL, TEMP_DIR, UPLOADS_DIR
 
 # Ordered by highest reliability against YouTube bot/anonymous checks
 PLAYER_CLIENT_PROFILES: List[Optional[Dict[str, Any]]] = [
@@ -95,13 +95,17 @@ class VideoDownloader:
             return self._info_cache[clean_url]
 
         last_err = None
-        for profile in PLAYER_CLIENT_PROFILES:
+        has_cookies = COOKIES_PATH.exists() and COOKIES_PATH.stat().st_size > 20
+        profiles = PLAYER_CLIENT_PROFILES[:2] if (IS_VERCEL and not has_cookies) else PLAYER_CLIENT_PROFILES
+        sock_timeout = 5 if IS_VERCEL else 15
+
+        for profile in profiles:
             ydl_opts = build_ytdlp_opts(
                 {
                     "skip_download": True,
                     "quiet": True,
                     "no_warnings": True,
-                    "socket_timeout": 15,
+                    "socket_timeout": sock_timeout,
                 },
                 profile,
             )
@@ -269,21 +273,22 @@ class VideoDownloader:
         if err_msg:
             errors.append(err_msg)
 
-        # 2. Fallback strategy: Direct dual-stream FFmpeg HTTP range seek across client profiles
+        # 2. Fallback strategy: Direct dual-stream FFmpeg HTTP range seek
         ok, err_msg = self._try_direct_ffmpeg_cut(clean_url, start_clamped, duration, out_path)
         if ok:
             return out_path
         if err_msg:
             errors.append(err_msg)
 
-        # 3. Last-resort fallback: Download <=720p MP4 once to cache, then slice locally
-        ok, err_msg = self._download_cached_source(clean_url, cached_src)
-        if ok:
-            self._cut_local_file(cached_src, start_clamped, duration, out_path)
-            if out_path.exists() and out_path.stat().st_size > 10000:
-                return out_path
-        if err_msg:
-            errors.append(err_msg)
+        # 3. Last-resort fallback: Download <=720p MP4 locally (skipped on 60s serverless lambdas)
+        if not IS_VERCEL:
+            ok, err_msg = self._download_cached_source(clean_url, cached_src)
+            if ok:
+                self._cut_local_file(cached_src, start_clamped, duration, out_path)
+                if out_path.exists() and out_path.stat().st_size > 10000:
+                    return out_path
+            if err_msg:
+                errors.append(err_msg)
 
         joined = " | ".join(errors)
         if "bot" in joined.lower() or "sign in" in joined.lower() or "cookies" in joined.lower():
@@ -355,10 +360,13 @@ class VideoDownloader:
 
     def _try_direct_ffmpeg_cut(self, url: str, start_sec: float, duration: float, out_path: Path) -> Tuple[bool, Optional[str]]:
         last_err: Optional[str] = None
-        for profile in PLAYER_CLIENT_PROFILES[:4]:
+        has_cookies = COOKIES_PATH.exists() and COOKIES_PATH.stat().st_size > 20
+        profiles = PLAYER_CLIENT_PROFILES[:1] if (IS_VERCEL and not has_cookies) else PLAYER_CLIENT_PROFILES[:4]
+        sock_timeout = 5 if IS_VERCEL else 12
+        for profile in profiles:
             try:
                 opts = build_ytdlp_opts(
-                    {"quiet": True, "no_warnings": True, "skip_download": True, "socket_timeout": 12},
+                    {"quiet": True, "no_warnings": True, "skip_download": True, "socket_timeout": sock_timeout},
                     profile,
                 )
                 with yt_dlp.YoutubeDL(opts) as ydl:
@@ -399,7 +407,10 @@ class VideoDownloader:
     def _try_ytdlp_range_download(self, url: str, start_sec: float, end_sec: float, out_path: Path) -> Tuple[bool, Optional[str]]:
         last_err: Optional[str] = None
         stem_tmpl = str(out_path.with_suffix(""))
-        for profile in PLAYER_CLIENT_PROFILES:
+        has_cookies = COOKIES_PATH.exists() and COOKIES_PATH.stat().st_size > 20
+        profiles = PLAYER_CLIENT_PROFILES[:2] if (IS_VERCEL and not has_cookies) else PLAYER_CLIENT_PROFILES
+        sock_timeout = 6 if IS_VERCEL else 15
+        for profile in profiles:
             try:
                 ydl_opts = build_ytdlp_opts(
                     {
@@ -411,7 +422,7 @@ class VideoDownloader:
                         "outtmpl": f"{stem_tmpl}.%(ext)s",
                         "quiet": True,
                         "no_warnings": True,
-                        "socket_timeout": 15,
+                        "socket_timeout": sock_timeout,
                     },
                     profile,
                 )

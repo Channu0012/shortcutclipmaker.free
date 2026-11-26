@@ -191,7 +191,9 @@ class VideoTranscriber:
 
     def _extract_via_ytdlp(self, url: str) -> Optional[List[Dict[str, Any]]]:
         """Extracts YouTube timed-text JSON3 preserving exact word offsets across player clients."""
-        for profile in PLAYER_CLIENT_PROFILES[:4]:
+        profiles = PLAYER_CLIENT_PROFILES[:1] if IS_VERCEL else PLAYER_CLIENT_PROFILES[:4]
+        sock_timeout = 5 if IS_VERCEL else 12
+        for profile in profiles:
             ydl_opts = build_ytdlp_opts(
                 {
                     "skip_download": True,
@@ -200,7 +202,7 @@ class VideoTranscriber:
                     "subtitleslangs": ["all"],
                     "quiet": True,
                     "no_warnings": True,
-                    "socket_timeout": 12,
+                    "socket_timeout": sock_timeout,
                 },
                 profile,
             )
