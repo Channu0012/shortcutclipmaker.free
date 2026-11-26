@@ -1,4 +1,5 @@
 import base64
+import inspect
 import re
 import tempfile
 import threading
@@ -28,13 +29,15 @@ app = FastAPI(
     version="3.2.0",
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+_cors_kwargs: Dict[str, Any] = {
+    "allow_origins": ["*"],
+    "allow_credentials": False,
+    "allow_methods": ["*"],
+    "allow_headers": ["*"],
+}
+if "allow_private_network" in inspect.signature(CORSMiddleware.__init__).parameters:
+    _cors_kwargs["allow_private_network"] = True
+app.add_middleware(CORSMiddleware, **_cors_kwargs)
 
 
 @app.middleware("http")

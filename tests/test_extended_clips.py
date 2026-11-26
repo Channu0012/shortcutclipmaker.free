@@ -225,3 +225,16 @@ def test_caption_template_fonts_resolve_in_libass():
         )
 
 
+def test_pna_preflight_allows_https_to_localhost_bridge():
+    res = client.options(
+        "/api/health",
+        headers={
+            "Origin": "https://klipnux.vercel.app",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Private-Network": "true",
+        },
+    )
+    assert res.status_code == 200
+    assert res.headers.get("access-control-allow-private-network") == "true"
+
+
