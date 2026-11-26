@@ -1,4 +1,4 @@
-// Klipnux Studio — Apple-Crafted Frontend Controller
+// klipnux Studio Controller
 document.addEventListener("DOMContentLoaded", () => {
   const refreshIcons = () => {
     if (window.lucide) window.lucide.createIcons();
@@ -43,7 +43,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let elapsedTimerInterval = null;
   let renderTimerInterval = null;
   let currentWizardStep = 1;
-  let activeSourceMode = "youtube"; // "youtube" | "upload"
+  let activeSourceMode = "youtube";
   const speedSteps = [1, 1.25, 1.5, 2];
   let speedIdx = 0;
 
@@ -54,6 +54,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const headerProjectMeta = document.getElementById("headerProjectMeta");
   const headerSourceBadge = document.getElementById("headerSourceBadge");
   const headerVideoTitle = document.getElementById("headerVideoTitle");
+  const navHowItWorks = document.getElementById("navHowItWorks");
   const btnLogoHome = document.getElementById("btnLogoHome");
   const btnNewProject = document.getElementById("btnNewProject");
 
@@ -68,6 +69,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const step2SourceSummary = document.getElementById("step2SourceSummary");
   const urlStatusHint = document.getElementById("urlStatusHint");
   const clipsCountPills = document.querySelectorAll("#clipsCountPills .kn-count-pill");
+  const btnShowcaseDemo = document.getElementById("btnShowcaseDemo");
 
   // Mobile Workspace Switcher
   const mobileTabBtns = document.querySelectorAll(".mobile-tab-btn");
@@ -109,11 +111,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const captionSelect = document.getElementById("captionSelect");
   const chkHookBanner = document.getElementById("chkHookBanner");
   const launcherCaptionSwatches = document.querySelectorAll("#launcherCaptionSwatches .caption-swatch");
-
-  // Existing Disk Library
-  const existingLibrarySection = document.getElementById("existingLibrarySection");
-  const libraryCountBadge = document.getElementById("libraryCountBadge");
-  const libraryGrid = document.getElementById("libraryGrid");
 
   // Processing View Controls
   const processStatusTitle = document.getElementById("processStatusTitle");
@@ -195,6 +192,55 @@ document.addEventListener("DOMContentLoaded", () => {
   let toastTimeout = null;
 
   // =========================================================
+  // APPLE-STYLE ON-SCROLL REVEALS & PARALLAX
+  // =========================================================
+  function initScrollMotion() {
+    const revealEls = document.querySelectorAll(".kn-reveal");
+    if ("IntersectionObserver" in window) {
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              entry.target.classList.add("in-view");
+              observer.unobserve(entry.target);
+            }
+          });
+        },
+        { threshold: 0.14, rootMargin: "0px 0px -40px 0px" }
+      );
+      revealEls.forEach((el) => observer.observe(el));
+    } else {
+      revealEls.forEach((el) => el.classList.add("in-view"));
+    }
+
+    const reducedMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const parallaxEl = document.querySelector("[data-parallax]");
+    if (parallaxEl && !reducedMotion) {
+      let ticking = false;
+      window.addEventListener(
+        "scroll",
+        () => {
+          if (launcherView.classList.contains("hidden") || ticking) return;
+          ticking = true;
+          requestAnimationFrame(() => {
+            const rect = parallaxEl.getBoundingClientRect();
+            const vh = window.innerHeight || 800;
+            if (rect.top < vh && rect.bottom > 0) {
+              const centerDist = (rect.top + rect.height * 0.5 - vh * 0.5) / vh;
+              const ty = Math.max(-14, Math.min(14, centerDist * 22));
+              const scale = Math.max(0.98, 1 - Math.abs(centerDist) * 0.025);
+              parallaxEl.style.transform = `translate3d(0, ${ty.toFixed(1)}px, 0) scale(${scale.toFixed(4)})`;
+            }
+            ticking = false;
+          });
+        },
+        { passive: true }
+      );
+    }
+  }
+  initScrollMotion();
+
+  // =========================================================
   // HELPERS, WIZARD NAVIGATION & VIEW ROUTER
   // =========================================================
   function showToast(message, isError = false) {
@@ -204,7 +250,7 @@ document.addEventListener("DOMContentLoaded", () => {
       toastIcon.setAttribute("data-lucide", "alert-circle");
       toastIcon.style.color = "var(--danger)";
     } else {
-      toastBox.style.borderColor = "rgba(0, 0, 0, 0.08)";
+      toastBox.style.borderColor = "rgba(17, 19, 25, 0.08)";
       toastIcon.setAttribute("data-lucide", "check-circle");
       toastIcon.style.color = "var(--success)";
     }
@@ -246,12 +292,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!urlInput || !urlStatusHint) return true;
     const val = urlInput.value.trim();
     if (!val) {
-      urlStatusHint.textContent = "Paste any YouTube URL or try Instant Studio Demo";
+      urlStatusHint.textContent = "Paste any public YouTube link";
       urlStatusHint.style.color = "var(--text-secondary)";
       return false;
     }
     if (extractYouTubeId(val)) {
-      urlStatusHint.textContent = val.startsWith("local://") ? "Uploaded video ready" : "Valid video link ready";
+      urlStatusHint.textContent = val.startsWith("local://") ? "Uploaded video ready" : "Link ready";
       urlStatusHint.style.color = "var(--success)";
       return true;
     }
@@ -278,7 +324,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const val = urlInput ? urlInput.value.trim() : "";
       if (step2SourceSummary) {
         step2SourceSummary.textContent = val.startsWith("local://")
-          ? `Uploaded file: ${val.replace("local://", "")}`
+          ? `File: ${val.replace("local://", "")}`
           : val;
       }
       wizardStep1.classList.add("hidden");
@@ -297,22 +343,31 @@ document.addEventListener("DOMContentLoaded", () => {
     resultsSection.classList.add("hidden");
 
     if (viewName === "launcher") {
+      document.body.classList.remove("in-workspace");
       launcherView.classList.remove("hidden");
       headerProjectMeta.classList.add("hidden");
       btnNewProject.classList.add("hidden");
+      btnDownloadAllTop.classList.add("hidden");
+      if (navHowItWorks) navHowItWorks.classList.remove("hidden");
       setWizardStep(1, "back");
-      refreshStorageAndLibrary();
+      refreshStorageStats();
     } else if (viewName === "processing") {
+      document.body.classList.remove("in-workspace");
       processingSection.classList.remove("hidden");
       headerProjectMeta.classList.add("hidden");
       btnNewProject.classList.add("hidden");
+      btnDownloadAllTop.classList.add("hidden");
+      if (navHowItWorks) navHowItWorks.classList.add("hidden");
       if (wizPill2) wizPill2.className = "kn-wiz-step done";
       if (wizPill3) wizPill3.className = "kn-wiz-step active";
     } else if (viewName === "workspace") {
+      document.body.classList.add("in-workspace");
       resultsSection.classList.remove("hidden");
       headerProjectMeta.classList.remove("hidden");
       headerProjectMeta.style.display = "flex";
       btnNewProject.classList.remove("hidden");
+      btnDownloadAllTop.classList.remove("hidden");
+      if (navHowItWorks) navHowItWorks.classList.add("hidden");
       setMobilePane("preview");
     }
     refreshIcons();
@@ -339,7 +394,7 @@ document.addEventListener("DOMContentLoaded", () => {
       p.classList.toggle("active", isMatch);
       const sub = p.querySelector("span");
       if (sub) {
-        sub.style.color = isMatch ? "var(--accent)" : "var(--text-secondary)";
+        sub.style.color = isMatch ? "var(--brand-violet)" : "var(--text-secondary)";
         sub.style.fontWeight = isMatch ? "600" : "400";
       }
     });
@@ -355,11 +410,11 @@ document.addEventListener("DOMContentLoaded", () => {
   if (btnWizardNext) {
     btnWizardNext.addEventListener("click", () => {
       if (activeSourceMode === "upload" && (!urlInput.value || !urlInput.value.startsWith("local://"))) {
-        return showToast("Please choose or drop an MP4/MOV/WEBM video file first", true);
+        return showToast("Choose or drop an MP4, MOV, or WEBM file first", true);
       }
       if (!validateSourceInline()) {
         urlInput.focus();
-        return showToast("Enter a valid YouTube link or try Instant Studio Demo", true);
+        return showToast("Paste a YouTube link first, or tap Instant Studio Demo", true);
       }
       setWizardStep(2, "next");
     });
@@ -412,78 +467,36 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // =========================================================
-  // SERVER SETTINGS, STORAGE STATS & EXISTING LIBRARY
+  // SERVER SETTINGS & STORAGE STATS
   // =========================================================
   async function loadServerSettings() {
     try {
       const res = await fetch(`${API_BASE}/api/settings`);
       if (res.ok) {
         const data = await res.json();
-        if (apiKeyDisplay) {
-          apiKeyDisplay.textContent = data.cookies_configured ? "Cookies Ready" : "Settings";
+        if (apiKeyDisplay && data.api_key_masked) {
+          apiKeyDisplay.textContent = `(${data.api_key_masked})`;
         }
         if (cookiesStatusHint) {
           cookiesStatusHint.textContent = data.cookies_configured
-            ? "YouTube cookies configured on server"
-            : "Not set - optional for cloud deployments";
+            ? "YouTube cookies active"
+            : "Not configured (optional)";
           cookiesStatusHint.style.color = data.cookies_configured ? "var(--success)" : "var(--text-secondary)";
         }
       }
     } catch (_) {}
   }
 
-  async function refreshStorageAndLibrary() {
+  async function refreshStorageStats() {
     try {
-      const [statsRes, clipsRes] = await Promise.all([
-        fetch(`${API_BASE}/api/storage-stats`),
-        fetch(`${API_BASE}/api/clips`),
-      ]);
+      const statsRes = await fetch(`${API_BASE}/api/storage-stats`);
       if (statsRes.ok) {
         const stats = await statsRes.json();
         if (storageStatsLabel) {
-          storageStatsLabel.textContent = `${stats.clips_count} clips`;
+          storageStatsLabel.textContent = `${stats.clips_count} clips (${stats.clips_mb} MB)`;
         }
       }
-      if (clipsRes.ok) {
-        const data = await clipsRes.json();
-        renderExistingLibrary(data.clips || []);
-      }
     } catch (_) {}
-  }
-
-  function renderExistingLibrary(files) {
-    if (!existingLibrarySection || !libraryGrid) return;
-    if (!files.length) {
-      existingLibrarySection.classList.add("hidden");
-      return;
-    }
-    existingLibrarySection.classList.remove("hidden");
-    libraryCountBadge.textContent = String(files.length);
-    libraryGrid.innerHTML = "";
-    files.slice(0, 9).forEach((f) => {
-      const item = document.createElement("div");
-      item.className = "kn-subcard";
-      item.style.cssText = "padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px;";
-      item.innerHTML = `
-        <div style="min-width: 0;">
-          <div style="font-size: 12px; font-weight: 700; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${f.filename}</div>
-          <div class="kn-tabular" style="font-size: 11px; color: var(--text-secondary);">${f.size_mb} MB &middot; MP4</div>
-        </div>
-        <div style="display: flex; align-items: center; gap: 5px; flex-shrink: 0;">
-          <a href="${f.download_url}" download="${f.filename}" class="kn-pressable kn-icon-btn" style="min-height: 30px; padding: 4px 10px; font-size: 11.5px; color: var(--accent); text-decoration: none;">Download</a>
-          <button type="button" class="btn-del-lib-clip kn-pressable" style="min-height: 28px; width: 28px; border: none; border-radius: 8px; background: transparent; color: var(--text-tertiary); display: inline-flex; align-items: center; justify-content: center;" data-filename="${f.filename}" title="Delete file">
-            <i data-lucide="x" style="width: 14px; height: 14px;"></i>
-          </button>
-        </div>
-      `;
-      item.querySelector(".btn-del-lib-clip").addEventListener("click", async () => {
-        await fetch(`${API_BASE}/api/clips/${encodeURIComponent(f.filename)}`, { method: "DELETE" });
-        refreshStorageAndLibrary();
-        showToast(`Deleted ${f.filename}`);
-      });
-      libraryGrid.appendChild(item);
-    });
-    refreshIcons();
   }
 
   if (btnClearStorage) {
@@ -499,11 +512,11 @@ document.addEventListener("DOMContentLoaded", () => {
           const d = await res.json().catch(() => ({}));
           renderedClipsMap = {};
           if (activeClip) selectClip(activeClip);
-          await refreshStorageAndLibrary();
-          showToast(d.message || "Cleared rendered clips and temporary cache");
+          await refreshStorageStats();
+          showToast(d.message || "Cleared temporary cache");
         }
       } catch (_) {
-        showToast("Unable to clear storage", true);
+        showToast("Unable to clear cache", true);
       }
     });
   }
@@ -511,6 +524,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Settings Modal
   if (btnApiSettings) {
     btnApiSettings.addEventListener("click", () => {
+      refreshStorageStats();
       settingsModal.classList.remove("hidden");
       refreshIcons();
     });
@@ -537,7 +551,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (cookiesVal !== null && cookiesVal.trim().length > 0) bodyPayload.cookies_txt = cookiesVal.trim();
 
       if (!bodyPayload.api_key && !bodyPayload.cookies_txt) {
-        return showToast("Enter an API key or paste YouTube cookies", true);
+        return showToast("Enter an API key or paste cookies to update", true);
       }
       const res = await fetch(`${API_BASE}/api/settings`, {
         method: "POST",
@@ -547,7 +561,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (res.ok) {
         settingsModal.classList.add("hidden");
         await loadServerSettings();
-        showToast("Klipnux settings saved");
+        showToast("Settings updated");
       } else {
         showToast("Failed to save settings", true);
       }
@@ -555,7 +569,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // =========================================================
-  // SOURCE TABS, LOCAL UPLOAD, CAPTION SWATCHES & PRESETS
+  // SOURCE TABS, LOCAL UPLOAD, SWATCHES & PRESETS
   // =========================================================
   if (btnLogoHome) btnLogoHome.addEventListener("click", () => showView("launcher"));
   if (btnNewProject) btnNewProject.addEventListener("click", () => showView("launcher"));
@@ -594,11 +608,11 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       const data = await res.json();
       urlInput.value = data.url;
-      uploadLabelText.textContent = `Uploaded: ${file.name} - advancing to Clips Setup`;
+      uploadLabelText.textContent = `Uploaded: ${file.name}`;
       showToast(`Uploaded ${file.name}`);
       setWizardStep(2, "next");
     } catch (err) {
-      uploadLabelText.textContent = "Drop any MP4, MOV, MKV, or WEBM file here";
+      uploadLabelText.textContent = "Drop MP4, MOV, MKV, or WEBM footage here";
       showToast(err.message || "Video upload failed", true);
     }
   }
@@ -612,14 +626,14 @@ document.addEventListener("DOMContentLoaded", () => {
   if (dropZone) {
     dropZone.addEventListener("dragover", (e) => {
       e.preventDefault();
-      dropZone.style.borderColor = "var(--accent)";
+      dropZone.style.borderColor = "var(--brand-violet)";
     });
     dropZone.addEventListener("dragleave", () => {
-      dropZone.style.borderColor = "rgba(0, 0, 0, 0.14)";
+      dropZone.style.borderColor = "rgba(17, 19, 25, 0.14)";
     });
     dropZone.addEventListener("drop", (e) => {
       e.preventDefault();
-      dropZone.style.borderColor = "rgba(0, 0, 0, 0.14)";
+      dropZone.style.borderColor = "rgba(17, 19, 25, 0.14)";
       if (e.dataTransfer.files && e.dataTransfer.files[0]) handleLocalVideoUpload(e.dataTransfer.files[0]);
     });
   }
@@ -642,7 +656,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (txt && txt.trim()) {
           urlInput.value = txt.trim();
           validateSourceInline();
-          showToast("Link pasted from clipboard");
+          showToast("Link pasted");
         }
       } catch (_) {
         urlInput.focus();
@@ -670,6 +684,13 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  if (btnShowcaseDemo) {
+    btnShowcaseDemo.addEventListener("click", () => {
+      urlInput.value = "demo://creator-podcast";
+      triggerAnalyze("demo://creator-podcast");
+    });
+  }
+
   clipForm.addEventListener("submit", (e) => {
     e.preventDefault();
     if (currentWizardStep === 1) {
@@ -677,7 +698,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
     const url = urlInput.value.trim();
-    if (!url) return showToast("Please enter a YouTube link or upload a video", true);
+    if (!url) return showToast("Paste a YouTube link or upload a video", true);
     triggerAnalyze(url);
   });
 
@@ -700,7 +721,7 @@ document.addEventListener("DOMContentLoaded", () => {
         el.style.color = "var(--success)";
         el.style.fontWeight = "600";
       } else if (idx + 1 === stepNum) {
-        el.style.color = "var(--accent)";
+        el.style.color = "var(--brand-violet)";
         el.style.fontWeight = "700";
       } else {
         el.style.color = "var(--text-tertiary)";
@@ -714,7 +735,7 @@ document.addEventListener("DOMContentLoaded", () => {
       activeJobCancelled = true;
       stopJobTimers();
       showView("launcher");
-      showToast("Analysis cancelled");
+      showToast("Cancelled");
     });
   }
 
@@ -734,7 +755,7 @@ document.addEventListener("DOMContentLoaded", () => {
       processElapsedTimer.textContent = `${sec}s`;
     }, 100);
 
-    updateProcessingSteps(1, 14, "Connecting to Klipnux Engine...", "Validating video source and preparing extraction...");
+    updateProcessingSteps(1, 14, "Connecting to klipnux...", "Inspecting stream and duration...");
 
     try {
       const maxClips = parseInt(clipsCountSelect.value, 10) || 12;
@@ -754,7 +775,7 @@ document.addEventListener("DOMContentLoaded", () => {
       });
 
       if (startRes.status === 404 || startRes.status === 405) {
-        updateProcessingSteps(2, 52, "2. Extracting Speech & Scoring...", "Finding best high-retention moments...");
+        updateProcessingSteps(2, 52, "2. Reading speech track...", "Selecting top segments...");
         const syncRes = await fetch(`${API_BASE}/api/analyze`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -772,14 +793,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (!startRes.ok) {
         const err = await startRes.json().catch(() => ({}));
-        throw new Error(err.detail || `Unable to start analysis (HTTP ${startRes.status}).`);
+        throw new Error(err.detail || `Unable to read video (HTTP ${startRes.status}).`);
       }
 
       const startJson = await startRes.json();
-
-      // Vercel serverless mode completes inline and returns job.result directly
       if (startJson.status === "completed" && startJson.result) {
-        updateProcessingSteps(4, 95, "4. Preparing Clip #1 Preview...", "Launching Klipnux Studio...");
+        updateProcessingSteps(4, 95, "4. Opening preview...", "Preparing Clip #1...");
         stopJobTimers();
         await hydrateWorkspace(startJson.result);
         return;
@@ -789,7 +808,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const pollJob = async () => {
         if (activeJobCancelled) return;
         const jobRes = await fetch(`${API_BASE}/api/jobs/${jobId}`);
-        if (!jobRes.ok) throw new Error("Lost connection to analysis job.");
+        if (!jobRes.ok) throw new Error("Lost connection while reading video.");
         const job = await jobRes.json();
 
         updateProcessingSteps(job.step || 2, job.progress || 40, job.title || "Processing...", job.detail || "");
@@ -810,7 +829,7 @@ document.addEventListener("DOMContentLoaded", () => {
       stopJobTimers();
       if (!activeJobCancelled) {
         showView("launcher");
-        showToast(err.message || "Unable to analyze this URL.", true);
+        showToast(err.message || "Unable to open this video URL.", true);
       }
     }
   }
@@ -827,16 +846,14 @@ document.addEventListener("DOMContentLoaded", () => {
     if (sortClipsSelect) sortClipsSelect.value = "timeline";
     if (chkSelectAllClips) chkSelectAllClips.checked = false;
 
-    const srcType = currentVideoInfo.is_demo ? "DEMO STUDIO" : currentVideoInfo.is_local ? "LOCAL VIDEO" : "YOUTUBE";
+    const srcType = currentVideoInfo.is_demo ? "DEMO STUDIO" : currentVideoInfo.is_local ? "LOCAL FILE" : "YOUTUBE";
     headerSourceBadge.textContent = srcType;
-    headerSourceBadge.className = currentVideoInfo.is_demo
-      ? "kn-badge kn-badge-blue"
-      : "kn-badge kn-badge-green";
+    headerSourceBadge.className = currentVideoInfo.is_demo ? "kn-badge kn-badge-blue" : "kn-badge kn-badge-green";
     headerVideoTitle.textContent = currentVideoInfo.title || "Untitled Video";
 
     videoTitle.textContent = currentVideoInfo.title || "Analyzed Video";
     videoChannel.textContent = currentVideoInfo.channel || "Creator";
-    videoThumb.src = currentVideoInfo.thumbnail || "https://images.unsplash.com/photo-1590602847861-f357a9332bbc?w=400&q=80";
+    videoThumb.src = currentVideoInfo.thumbnail || "/assets/showcase-podcast.jpg";
     timelineDurationBadge.textContent = formatTime(totalVideoDuration);
     clipsFoundBadge.textContent = `${currentClips.length} Clips Found`;
     countAll.textContent = String(currentClips.length);
@@ -847,8 +864,6 @@ document.addEventListener("DOMContentLoaded", () => {
     buildDynamicCategoryFilters();
     renderClipsQueue();
     updateBatchCountLabel();
-
-    showToast(`Found ${currentClips.length} clips — cutting Clip #1 preview...`);
 
     if (currentClips.length > 0) {
       if (currentVideoInfo.is_demo && !renderedClipsMap[currentClips[0].id]) {
@@ -864,7 +879,9 @@ document.addEventListener("DOMContentLoaded", () => {
           waveform: currentClips[0].waveform_preview,
         };
         selectClip(currentClips[0]);
+        showToast(`${currentClips.length} demo clips ready`);
       } else {
+        showToast(`Found ${currentClips.length} clips — cutting Clip #1 preview...`);
         selectClip(currentClips[0]);
         await renderAndPlayClip(currentClips[0]);
       }
@@ -879,7 +896,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const leftPct = Math.min(96, Math.max(0.5, (clip.start_time / totalSecs) * 100));
       const widthPct = Math.max(2.0, Math.min(100 - leftPct, (clip.duration / totalSecs) * 100));
       const span = document.createElement("div");
-      const bg = clip.score >= 92 ? "var(--success)" : clip.score >= 85 ? "var(--accent)" : "var(--warning)";
+      const bg = clip.score >= 92 ? "var(--success)" : clip.score >= 85 ? "var(--brand-violet)" : "var(--warning)";
       const isSelected = activeClip && activeClip.id === clip.id;
 
       span.className = "heatmap-span";
@@ -887,12 +904,12 @@ document.addEventListener("DOMContentLoaded", () => {
       span.style.width = `${widthPct}%`;
       span.style.background = bg;
       span.style.opacity = isSelected ? "1" : "0.62";
-      span.style.boxShadow = isSelected ? "0 0 0 2px #ffffff, 0 0 0 4px var(--accent)" : "none";
+      span.style.boxShadow = isSelected ? "0 0 0 2px #ffffff, 0 0 0 4px var(--brand-violet)" : "none";
       span.dataset.markerClipId = clip.id;
 
       span.innerHTML = `
         <div class="heatmap-tooltip kn-tabular">
-          #${clip.index} &middot; ${formatTime(clip.start_time)}-${formatTime(clip.end_time)} (${Math.round(clip.duration)}s) &middot; Score ${clip.score}
+          #${clip.index} &middot; ${formatTime(clip.start_time)}-${formatTime(clip.end_time)} (${Math.round(clip.duration)}s)
         </div>
       `;
 
@@ -921,7 +938,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const isActive = activeCategory === tag;
       btn.className = "kn-pressable kn-tabular";
       btn.style.cssText = isActive
-        ? "padding: 5px 11px; border-radius: 980px; border: 1px solid var(--accent); background: var(--accent); color: #ffffff; font-size: 11.5px; font-weight: 600;"
+        ? "padding: 5px 11px; border-radius: 980px; border: 1px solid var(--text-primary); background: var(--text-primary); color: #ffffff; font-size: 11.5px; font-weight: 600;"
         : "padding: 5px 11px; border-radius: 980px; border: 1px solid var(--border-hairline); background: var(--bg-subtle); color: var(--text-secondary); font-size: 11.5px; font-weight: 600;";
       btn.textContent = `${label} (${cnt})`;
       btn.addEventListener("click", () => {
@@ -962,7 +979,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     clipCardsList.innerHTML = "";
     if (!filteredClips.length) {
-      clipCardsList.innerHTML = `<div style="font-size: 12.5px; color: var(--text-secondary); text-align: center; padding: 32px 12px;">No clips match this category.</div>`;
+      clipCardsList.innerHTML = `<div style="font-size: 12.5px; color: var(--text-secondary); text-align: center; padding: 32px 12px;">No clips in this group.</div>`;
       return;
     }
 
@@ -983,13 +1000,13 @@ document.addEventListener("DOMContentLoaded", () => {
         : `<span class="kn-badge kn-badge-neutral" style="font-size: 10px;">QUEUED</span>`;
 
       const actionBtnStyle = isFreshRendered
-        ? "padding: 5px 12px; border-radius: 980px; border: none; background: #15803d; color: #ffffff; font-size: 11.5px; font-weight: 600;"
-        : "padding: 5px 12px; border-radius: 980px; border: none; background: var(--accent); color: #ffffff; font-size: 11.5px; font-weight: 600;";
+        ? "padding: 5px 12px; border-radius: 980px; border: none; background: #0d9f6e; color: #ffffff; font-size: 11.5px; font-weight: 600;"
+        : "padding: 5px 12px; border-radius: 980px; border: none; background: var(--text-primary); color: #ffffff; font-size: 11.5px; font-weight: 600;";
 
       card.innerHTML = `
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px;">
           <div style="display: flex; align-items: center; gap: 7px; min-width: 0;">
-            <input type="checkbox" class="clip-batch-chk" style="width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer;" ${selectedClipIds.has(clip.id) ? "checked" : ""} />
+            <input type="checkbox" class="clip-batch-chk" style="width: 15px; height: 15px; accent-color: var(--brand-violet); cursor: pointer;" ${selectedClipIds.has(clip.id) ? "checked" : ""} />
             <span class="kn-tabular" style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary);">#${clip.index}</span>
             <span class="kn-badge ${categoryBadgeClass(clip.category_tag)}" style="font-size: 10.5px;">${clip.category}</span>
           </div>
@@ -1040,7 +1057,7 @@ document.addEventListener("DOMContentLoaded", () => {
             triggerClipDownload(rendered, `klipnux_short_${clip.index}.mp4`);
             showToast(`Downloading Short #${clip.index}...`);
           } else {
-            showToast(`Cutting Clip #${clip.index} for download...`);
+            showToast(`Cutting Clip #${clip.index}...`);
             const clipData = await renderAndPlayClip(clip);
             if (clipData) {
               triggerClipDownload(clipData, `klipnux_short_${clip.index}.mp4`);
@@ -1134,8 +1151,8 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       renderStatusHint.textContent = rendered
-        ? "Settings changed - click to re-cut MP4"
-        : "Click below to cut & burn 1080p MP4";
+        ? "Settings updated - click to re-cut MP4"
+        : "Click below to cut 1080p MP4";
       updateLiveStagePreview();
       initWaveform(clip.waveform_preview);
     }
@@ -1143,7 +1160,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function updateLiveStagePreview() {
     if (!activeClip) return;
-    if (stageCategoryPill) stageCategoryPill.textContent = activeClip.category || "Viral Moment";
+    if (stageCategoryPill) stageCategoryPill.textContent = activeClip.category || "Clip";
     if (stageTimestamp) {
       stageTimestamp.textContent = `${formatTime(activeClip.start_time)} - ${formatTime(activeClip.end_time)} (${Math.round(activeClip.duration)}s)`;
     }
@@ -1151,15 +1168,15 @@ document.addEventListener("DOMContentLoaded", () => {
     const bannerOn = chkWorkspaceBanner ? chkWorkspaceBanner.checked : true;
     if (liveBannerPreview) {
       liveBannerPreview.classList.toggle("hidden", !bannerOn);
-      liveBannerPreview.textContent = (activeClip.hook_title || "Viral Clip").replace(/[\u{1F300}-\u{1FAFF}]/gu, "").trim();
+      liveBannerPreview.textContent = (activeClip.hook_title || "Clip Title").replace(/[\u{1F300}-\u{1FAFF}]/gu, "").trim();
     }
 
     const styleId = workspaceCaptionSelect ? workspaceCaptionSelect.value : captionSelect.value;
     const samples = {
-      hormozi: `<span style="color:#fff">VOLUME </span><span style="padding:2px 6px;border-radius:4px;background:#22c55e;color:#052e16">CREATES</span><span style="color:#fff"> SKILL</span>`,
+      hormozi: `<span style="color:#fff">VOLUME </span><span style="padding:2px 6px;border-radius:4px;background:#0ec88a;color:#052e16">CREATES</span><span style="color:#fff"> SKILL</span>`,
       mrbeast: `<span style="color:#fde047">WAIT </span><span style="color:#f43f5e">FOR IT!</span>`,
       tiktok: `<span style="color:#fff">Pace is </span><span style="color:#fe2c55">everything</span>`,
-      neon: `<span style="color:#22d3ee">GO </span><span style="color:#e879f9">10X FASTER</span>`,
+      neon: `<span style="color:#22d3ee">GO </span><span style="color:#c084fc">10X FASTER</span>`,
       minimal: `<span style="padding:2px 8px;border-radius:5px;background:rgba(0,0,0,0.8);color:#fff;font-size:12px">Consistent pacing wins</span>`,
       podcast: `<span style="color:#fff">Master the </span><span style="color:#fbbf24">story arc</span>`,
     };
@@ -1174,7 +1191,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (metricHookVal) metricHookVal.textContent = `${vb.hook_score || Math.min(99, clip.score + 1)}%`;
     if (metricRetentionVal) metricRetentionVal.textContent = `${vb.retention_score || Math.min(99, clip.score - 1)}%`;
     if (metricEnergyVal) metricEnergyVal.textContent = `${vb.energy_score || clip.score}%`;
-    if (inspectorReasoning) inspectorReasoning.textContent = vb.reasoning || "Strong hook opener and clean sentence rhythm.";
+    if (inspectorReasoning) inspectorReasoning.textContent = vb.reasoning || "Clear opening statement with clean sentence cadence.";
   }
 
   function renderInteractiveTranscript(clip) {
@@ -1199,7 +1216,7 @@ document.addEventListener("DOMContentLoaded", () => {
             clip.custom_words[idx].word = updated.trim();
             renderInteractiveTranscript(clip);
             renderClipsQueue();
-            showToast("Caption word updated - click Cut & Apply to render");
+            showToast("Word updated - click Cut & Apply to render");
           }
           return;
         }
@@ -1208,7 +1225,7 @@ document.addEventListener("DOMContentLoaded", () => {
           previewVideo.currentTime = Math.max(0, w.start - clip.start_time);
           previewVideo.play().catch(() => {});
         } else {
-          showToast(`Timestamp ${formatTime(w.start)} - click Cut & Render Clip to preview`);
+          showToast(`Timestamp ${formatTime(w.start)} - cut clip first to jump playback`);
         }
       });
 
@@ -1220,12 +1237,12 @@ document.addEventListener("DOMContentLoaded", () => {
     btnToggleEditWords.addEventListener("click", () => {
       isEditWordsMode = !isEditWordsMode;
       btnToggleEditWords.textContent = isEditWordsMode ? "Done Editing" : "Edit Words";
-      btnToggleEditWords.style.background = isEditWordsMode ? "var(--accent)" : "var(--bg-surface)";
-      btnToggleEditWords.style.color = isEditWordsMode ? "#ffffff" : "var(--accent)";
+      btnToggleEditWords.style.background = isEditWordsMode ? "var(--brand-violet)" : "var(--bg-surface)";
+      btnToggleEditWords.style.color = isEditWordsMode ? "#ffffff" : "var(--brand-violet)";
       if (transcriptHelpHint) {
         transcriptHelpHint.textContent = isEditWordsMode
-          ? "Edit Mode Active: click any word below to rename before rendering"
-          : 'Tap any word to jump playback or click "Edit Words" to customize burned captions';
+          ? "Edit mode active: tap any word below to rename"
+          : 'Tap any word to jump playback or click "Edit Words" to adjust caption spelling';
       }
       if (activeClip) renderInteractiveTranscript(activeClip);
     });
@@ -1268,10 +1285,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  if (chkWorkspaceBanner) {
-    chkWorkspaceBanner.addEventListener("change", () => onClipEdited(false));
-  }
-
+  if (chkWorkspaceBanner) chkWorkspaceBanner.addEventListener("change", () => onClipEdited(false));
   if (workspaceCaptionSelect) {
     workspaceCaptionSelect.addEventListener("change", () => {
       captionSelect.value = workspaceCaptionSelect.value;
@@ -1308,7 +1322,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (dur) {
         activeClip.end_time = Math.min(totalVideoDuration || 3600, activeClip.start_time + dur);
         onClipEdited();
-        showToast(`Clip length set to ${formatTime(activeClip.end_time - activeClip.start_time)}`);
+        showToast(`Length set to ${formatTime(activeClip.end_time - activeClip.start_time)}`);
       }
     });
   });
@@ -1343,7 +1357,7 @@ document.addEventListener("DOMContentLoaded", () => {
     btn.addEventListener("click", () => {
       applyAspectToFrame(btn.dataset.aspect);
       onClipEdited(false);
-      showToast(`Switched layout to ${btn.dataset.aspect}`);
+      showToast(`Layout: ${btn.dataset.aspect}`);
     });
   });
 
@@ -1413,8 +1427,8 @@ document.addEventListener("DOMContentLoaded", () => {
         initWaveform(clipData.waveform || clip.waveform_preview);
       }
       renderClipsQueue();
-      refreshStorageAndLibrary();
-      showToast(`Clip #${clip.index} cut & ready (${clipData.size_mb} MB)`);
+      refreshStorageStats();
+      showToast(`Clip #${clip.index} ready (${clipData.size_mb} MB)`);
       return clipData;
     } catch (err) {
       const msg = err.message || "Failed to cut video clip.";
@@ -1498,9 +1512,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (isFresh) {
         triggerClipDownload(rendered, `klipnux_short_${activeClip.index}.mp4`);
-        showToast(`Downloading Short #${activeClip.index} (${rendered.size_mb || "1.2"} MB)...`);
+        showToast(`Downloading Short #${activeClip.index}...`);
       } else {
-        showToast(`Cutting Short #${activeClip.index} before download...`);
+        showToast(`Cutting Short #${activeClip.index}...`);
         const clipData = await renderAndPlayClip(activeClip);
         if (clipData) {
           triggerClipDownload(clipData, `klipnux_short_${activeClip.index}.mp4`);
@@ -1514,7 +1528,7 @@ document.addEventListener("DOMContentLoaded", () => {
     btnToggleSound.addEventListener("click", () => {
       previewVideo.muted = !previewVideo.muted;
       soundIcon.setAttribute("data-lucide", previewVideo.muted ? "volume-x" : "volume-2");
-      soundIcon.style.color = previewVideo.muted ? "#fbbf24" : "#4ade80";
+      soundIcon.style.color = previewVideo.muted ? "#fbbf24" : "#0ec88a";
       refreshIcons();
     });
   }
@@ -1541,7 +1555,7 @@ document.addEventListener("DOMContentLoaded", () => {
       ? peaksArray
       : [35, 60, 75, 45, 88, 70, 40, 82, 95, 58, 68, 90, 52, 42, 78, 84, 62, 88, 96, 72, 48, 66, 80, 92, 84, 68, 56, 86, 94, 52, 44, 78, 90, 70, 58, 82, 96, 86, 62, 48, 72, 84, 92, 68, 54, 78, 88, 58];
 
-    waveformContainer.innerHTML = `<div id="waveformPlayhead" style="position: absolute; top: 0; bottom: 0; width: 2px; background: var(--success-bright); z-index: 20; pointer-events: none; left: 0%;"></div>`;
+    waveformContainer.innerHTML = `<div id="waveformPlayhead" style="position: absolute; top: 0; bottom: 0; width: 2px; background: var(--brand-emerald); z-index: 20; pointer-events: none; left: 0%;"></div>`;
     peaks.forEach((h) => {
       const bar = document.createElement("div");
       bar.className = "waveform-bar";
@@ -1550,7 +1564,6 @@ document.addEventListener("DOMContentLoaded", () => {
       waveformContainer.appendChild(bar);
     });
 
-    // 1:1 Pointer Capture scrub interaction (WWDC Fluid Interfaces)
     let isDragging = false;
     waveformContainer.onpointerdown = (e) => {
       isDragging = true;
@@ -1583,7 +1596,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const bars = document.querySelectorAll("#waveformContainer .waveform-bar");
       const activeIdx = Math.floor((pct / 100) * bars.length);
       bars.forEach((b, idx) => {
-        b.style.backgroundColor = idx <= activeIdx ? "var(--accent)" : "#d2d2d7";
+        b.style.backgroundColor = idx <= activeIdx ? "var(--brand-violet)" : "#d2d2d7";
       });
 
       const absT = activeClip.start_time + rel;
@@ -1604,7 +1617,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const seo = activeClip.youtube_shorts_seo || {};
       const payload = `${seo.title || activeClip.hook_title}\n\n${seo.description || activeClip.summary}\n\n${(seo.tags || activeClip.hashtags || []).join(" ")}`;
       navigator.clipboard.writeText(payload).catch(() => {});
-      showToast(`Copied SEO copy for Clip #${activeClip.index}`);
+      showToast(`Copied caption copy for Clip #${activeClip.index}`);
     });
   }
 
@@ -1640,7 +1653,7 @@ document.addEventListener("DOMContentLoaded", () => {
       } catch (_) {}
     }
     updateBatchCountLabel();
-    refreshStorageAndLibrary();
+    refreshStorageStats();
   }
 
   if (btnBatchRenderAll) {
@@ -1657,7 +1670,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       btnBatchRenderAll.disabled = false;
       updateBatchCountLabel();
-      refreshStorageAndLibrary();
+      refreshStorageStats();
       if (activeClip && renderedClipsMap[activeClip.id]) {
         selectClip(activeClip);
       }
@@ -1689,7 +1702,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const dv = new DataView(lh.buffer);
       dv.setUint32(0, 0x04034b50, true);
       dv.setUint16(4, 20, true);
-      dv.setUint16(8, 0, true); // stored
+      dv.setUint16(8, 0, true);
       dv.setUint32(14, crc, true);
       dv.setUint32(18, bytes.length, true);
       dv.setUint32(22, bytes.length, true);
@@ -1759,7 +1772,6 @@ document.addEventListener("DOMContentLoaded", () => {
       if (res.ok) {
         blob = await res.blob();
       } else {
-        // Serverless fallback: assemble ZIP cleanly from cached inline MP4 bytes if container switched
         const memEntries = [];
         for (const c of Object.values(renderedClipsMap)) {
           if (!c || !c.filename) continue;
@@ -1790,7 +1802,7 @@ document.addEventListener("DOMContentLoaded", () => {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      showToast("Downloaded Klipnux ZIP pack");
+      showToast("Downloaded klipnux ZIP pack");
     } catch (err) {
       showToast(err.message || "Failed to download ZIP pack", true);
     }
@@ -1801,6 +1813,6 @@ document.addEventListener("DOMContentLoaded", () => {
   // Initial Hydration
   resolveWorkingApiBase().then(() => {
     loadServerSettings();
-    refreshStorageAndLibrary();
+    refreshStorageStats();
   });
 });

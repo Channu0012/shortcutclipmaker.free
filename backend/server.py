@@ -553,7 +553,7 @@ def clear_storage():
     locked = 0
     for folder in (OUTPUT_DIR, TEMP_DIR, UPLOADS_DIR):
         for p in folder.glob("*"):
-            if p.is_file() and p != COOKIES_PATH:
+            if p.is_file() and p != COOKIES_PATH and p.name != ".gitkeep":
                 if _safe_unlink(p):
                     count += 1
                 else:
@@ -660,5 +660,12 @@ if frontend_dist.exists():
     @app.get("/")
     def serve_index():
         return FileResponse(frontend_dist / "index.html")
+
+    @app.get("/favicon.ico")
+    def serve_favicon():
+        ico_png = frontend_dist / "assets" / "favicon-32x32.png"
+        if ico_png.exists():
+            return FileResponse(ico_png, media_type="image/png")
+        raise HTTPException(status_code=404, detail="Favicon not found.")
 
     app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="frontend")
