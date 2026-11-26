@@ -1,428 +1,535 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ShortCut Studio — AI AutoCut Long Video to Viral Shorts</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Klipnux — AI AutoCut Video Clip Studio</title>
+  <meta name="description" content="Turn long-form YouTube and uploaded videos into viral vertical, square, and widescreen clips in seconds with Klipnux." />
+  <meta name="theme-color" content="#ffffff" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
   <script src="https://unpkg.com/lucide@latest"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          fontFamily: {
-            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
-            mono: ['"JetBrains Mono"', 'monospace'],
-          },
-          colors: {
-            brand: {
-              300: '#a5b4fc',
-              400: '#818cf8',
-              500: '#6366f1',
-              600: '#4f46e5',
-              700: '#4338ca',
-            },
-            surface: {
-              950: '#07090e',
-              900: '#0d111a',
-              850: '#131926',
-              800: '#1a2233',
-              750: '#222c42',
-            },
-          },
-        },
-      },
-    };
-  </script>
   <link rel="stylesheet" href="style.css" />
+  <style>
+    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .grid-5 { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+    .grid-swatches { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+    .grid-presets { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .grid-lib { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    @media (max-width: 900px) {
+      .grid-swatches { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .grid-presets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .grid-lib { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 640px) {
+      .grid-3 { grid-template-columns: 1fr; }
+      .grid-5 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .grid-swatches { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .grid-presets { grid-template-columns: 1fr; }
+      .grid-lib { grid-template-columns: 1fr; }
+      .hide-xs { display: none !important; }
+    }
+  </style>
 </head>
-<body class="bg-surface-950 text-slate-100 min-h-screen font-sans antialiased selection:bg-brand-500 selection:text-white flex flex-col">
+<body style="display: flex; flex-direction: column; min-height: 100vh;">
 
-  <!-- Sticky Top Command Header -->
-  <header class="h-14 border-b border-white/[0.07] bg-surface-950/95 backdrop-blur-md sticky top-0 z-50 px-4 lg:px-6 flex items-center justify-between gap-3">
-    <div class="flex items-center gap-3 min-w-0">
-      <button type="button" id="btnLogoHome" class="flex items-center gap-2.5 studio-pressable shrink-0 text-left">
-        <div class="w-8 h-8 rounded-lg bg-brand-600/15 border border-brand-500/35 flex items-center justify-center">
-          <i data-lucide="scissors" class="w-4 h-4 text-brand-400 -rotate-45"></i>
-        </div>
-        <div class="flex items-center gap-2">
-          <span class="font-extrabold text-sm tracking-tight text-white">SHORTCUT</span>
-          <span class="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-surface-850 text-brand-300 border border-white/[0.08]">PRO</span>
-        </div>
-      </button>
+  <!-- Translucent Apple-Style Sticky Header -->
+  <header class="kn-header">
+    <div class="kn-header-inner">
+      <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+        <button type="button" id="btnLogoHome" class="kn-pressable" style="display: inline-flex; align-items: center; gap: 9px; border: none; background: transparent; padding: 4px 2px;" aria-label="Klipnux Home">
+          <svg width="30" height="30" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+            <rect width="32" height="32" rx="9" fill="#1D1D1F"/>
+            <path d="M9.5 8.5V23.5M14.5 16L22.5 8.5M14.5 16L22.5 23.5" stroke="#FFFFFF" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="23.5" cy="16" r="2.2" fill="#0071E3"/>
+          </svg>
+          <span style="font-weight: 800; font-size: 16px; letter-spacing: -0.03em; color: var(--text-primary);">Klipnux</span>
+          <span class="kn-badge kn-badge-blue hide-xs" style="font-size: 10px; font-weight: 700;">STUDIO</span>
+        </button>
 
-      <!-- Workspace active video pill (shown in Studio Mode) -->
-      <div id="headerProjectMeta" class="hidden md:flex items-center gap-2 pl-3 border-l border-white/[0.08] min-w-0">
-        <span id="headerSourceBadge" class="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">YOUTUBE</span>
-        <span id="headerVideoTitle" class="text-xs font-medium text-slate-300 truncate max-w-[240px] lg:max-w-[340px]">Project Title</span>
+        <div id="headerProjectMeta" class="hidden" style="align-items: center; gap: 8px; padding-left: 12px; border-left: 1px solid var(--border-hairline); min-width: 0;">
+          <span id="headerSourceBadge" class="kn-badge kn-badge-green" style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em;">YOUTUBE</span>
+          <span id="headerVideoTitle" style="font-size: 12.5px; font-weight: 600; color: var(--text-secondary); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Project Title</span>
+        </div>
       </div>
-    </div>
 
-    <div class="flex items-center gap-2 shrink-0">
-      <button type="button" id="btnNewProject" class="hidden studio-pressable items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-850 hover:bg-surface-800 text-xs font-semibold text-slate-200 border border-white/[0.08]">
-        <i data-lucide="plus" class="w-3.5 h-3.5 text-brand-400"></i>
-        <span>New Video</span>
-      </button>
+      <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+        <button type="button" id="btnNewProject" class="hidden kn-pressable kn-icon-btn" title="Start New Video">
+          <i data-lucide="plus" style="width: 14px; height: 14px; color: var(--accent);"></i>
+          <span class="hide-xs">New Video</span>
+        </button>
 
-      <button type="button" id="btnApiSettings" class="studio-pressable hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-surface-900 hover:bg-surface-850 border border-white/[0.08] text-[11px] font-mono text-slate-300" title="Configure API Key">
-        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-        <span id="apiKeyDisplay">API: 94981c...e89f</span>
-      </button>
+        <button type="button" id="btnApiSettings" class="kn-pressable kn-icon-btn" title="Configure API Key and Cookies">
+          <span style="width: 7px; height: 7px; border-radius: 50%; background: var(--success-bright); display: inline-block;"></span>
+          <span id="apiKeyDisplay" class="hide-xs kn-tabular">Settings</span>
+        </button>
 
-      <button type="button" id="btnClearStorage" class="studio-pressable flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-surface-900 hover:bg-rose-950/50 text-xs font-medium text-slate-400 hover:text-rose-300 border border-white/[0.08] hover:border-rose-500/30" title="Wipe rendered clips & cache">
-        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-        <span id="storageStatsLabel" class="hidden sm:inline font-mono text-[11px]">0 clips</span>
-      </button>
+        <button type="button" id="btnClearStorage" class="kn-pressable kn-icon-btn" title="Wipe rendered clips and temp storage">
+          <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+          <span id="storageStatsLabel" class="hide-xs kn-tabular">0 clips</span>
+        </button>
 
-      <button type="button" id="btnDownloadAllTop" class="studio-pressable flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-xs font-semibold text-white shadow-sm">
-        <i data-lucide="archive" class="w-3.5 h-3.5"></i>
-        <span class="hidden sm:inline">Export .ZIP</span>
-      </button>
+        <button type="button" id="btnDownloadAllTop" class="kn-pressable kn-btn-primary" style="min-height: 36px; padding: 6px 14px; font-size: 12.5px;">
+          <i data-lucide="archive" style="width: 14px; height: 14px;"></i>
+          <span class="hide-xs">Export ZIP</span>
+        </button>
+      </div>
     </div>
   </header>
 
   <!-- =========================================================
-       VIEW A: FOCUSED PROJECT LAUNCHER (INGEST & CONFIG)
+       VIEW A: TWO-STEP GUIDED LAUNCHER & INSTANT STUDIO DEMO
   ========================================================== -->
-  <main id="launcherView" class="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-10 space-y-6 animate-panel">
-    <div class="text-center space-y-2 max-w-2xl mx-auto">
-      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-surface-900 border border-white/[0.08] text-[11px] font-mono text-slate-300">
-        <i data-lucide="sparkles" class="w-3.5 h-3.5 text-brand-400"></i>
-        <span>AutoCut Engine v3.0 · TimedText + Local Whisper AI + FFmpeg 1080p</span>
+  <main id="launcherView" class="animate-panel" style="flex: 1; max-width: 920px; width: 100%; margin: 0 auto; padding: 34px 16px 56px; display: flex; flex-direction: column; gap: 24px;">
+
+    <!-- Hero Typography -->
+    <div style="text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px;">
+      <div class="kn-badge kn-badge-neutral" style="font-size: 11px; padding: 4px 12px; letter-spacing: 0.01em;">
+        <i data-lucide="sparkles" style="width: 12px; height: 12px; color: var(--accent);"></i>
+        <span>Word-Synced Captions &bull; 9:16, 1:1 &amp; 16:9 AutoCut</span>
       </div>
-      <h1 class="text-2xl sm:text-4xl font-extrabold tracking-tight text-white">
-        Long Videos into Viral Shorts in Seconds
+      <h1 class="kn-display">
+        Long videos to viral clips.<br />With Apple-level precision.
       </h1>
-      <p class="text-xs sm:text-sm text-slate-400 leading-relaxed">
-        Paste any long-form YouTube link or drop a local MP4 recording. AutoCut finds the top 10–20 hooks, scores retention, syncs animated captions, and exports 9:16, 1:1, or 16:9 clips.
+      <p class="kn-subtitle" style="max-width: 560px; margin: 0;">
+        Paste a YouTube link or upload a video, pick how many clips to extract, and Klipnux cuts your first clip into an instant 1080p preview.
       </p>
+
+      <!-- Stepper Wayfinding Bar -->
+      <nav class="kn-wizard-nav" aria-label="Setup Progress" style="margin-top: 6px;">
+        <div id="wizPill1" class="kn-wiz-step active">
+          <span class="kn-wiz-num kn-tabular">1</span>
+          <span>Video Source</span>
+        </div>
+        <i data-lucide="chevron-right" style="width: 14px; height: 14px; color: var(--text-tertiary);"></i>
+        <div id="wizPill2" class="kn-wiz-step">
+          <span class="kn-wiz-num kn-tabular">2</span>
+          <span>Clips to Extract</span>
+        </div>
+        <i data-lucide="chevron-right" style="width: 14px; height: 14px; color: var(--text-tertiary);"></i>
+        <div id="wizPill3" class="kn-wiz-step">
+          <span class="kn-wiz-num kn-tabular">3</span>
+          <span>Cut &amp; Preview</span>
+        </div>
+      </nav>
     </div>
 
-    <!-- Main Ingest Card -->
-    <section class="bg-surface-900 border border-white/[0.08] rounded-2xl p-5 sm:p-6 space-y-5 shadow-2xl">
-      <!-- Source Tabs: YouTube URL vs Upload Video -->
-      <div class="flex items-center justify-between flex-wrap gap-3 pb-3 border-b border-white/[0.06]">
-        <div class="inline-flex p-1 rounded-xl bg-surface-950 border border-white/[0.07]">
-          <button type="button" id="tabSourceYoutube" class="source-tab-btn px-3.5 py-1.5 rounded-lg bg-brand-600 text-white text-xs font-semibold flex items-center gap-1.5 studio-pressable">
-            <i data-lucide="youtube" class="w-3.5 h-3.5"></i>
-            <span>YouTube Link</span>
-          </button>
-          <button type="button" id="tabSourceUpload" class="source-tab-btn px-3.5 py-1.5 rounded-lg text-slate-400 hover:text-white text-xs font-semibold flex items-center gap-1.5 studio-pressable">
-            <i data-lucide="upload-cloud" class="w-3.5 h-3.5"></i>
-            <span>Upload MP4 / Video</span>
-          </button>
-        </div>
-        <span class="text-[11px] font-mono text-slate-500">Supports podcasts, interviews, lectures up to 3 hrs</span>
-      </div>
+    <!-- Main Guided Wizard Card -->
+    <section class="kn-card" style="padding: 24px;">
+      <form id="clipForm" novalidate>
 
-      <form id="clipForm" class="space-y-5">
-        <!-- YouTube URL Input Mode -->
-        <div id="youtubeSourcePanel" class="space-y-3">
-          <div class="relative flex items-center">
-            <div class="absolute left-3.5 text-rose-500 pointer-events-none">
-              <i data-lucide="link-2" class="w-4 h-4"></i>
+        <!-- STEP 1: SOURCE INPUT + INSTANT DEMO -->
+        <div id="wizardStep1" style="display: flex; flex-direction: column; gap: 18px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--border-hairline);">
+            <div class="kn-segmented" role="tablist" aria-label="Video Source">
+              <button type="button" id="tabSourceYoutube" class="kn-seg-btn active kn-pressable" role="tab" aria-selected="true">
+                <i data-lucide="youtube" style="width: 14px; height: 14px; color: #dc2626;"></i>
+                <span>YouTube Link</span>
+              </button>
+              <button type="button" id="tabSourceUpload" class="kn-seg-btn kn-pressable" role="tab" aria-selected="false">
+                <i data-lucide="upload-cloud" style="width: 14px; height: 14px;"></i>
+                <span>Upload Video</span>
+              </button>
             </div>
-            <input
-              type="text"
-              id="urlInput"
-              value="https://www.youtube.com/watch?v=UF8uR6Z6KLc"
-              placeholder="https://www.youtube.com/watch?v=... or youtu.be/..."
-              class="w-full bg-surface-950 border border-white/[0.1] rounded-xl py-3 pl-10 pr-24 text-xs sm:text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/40 font-mono"
-            />
-            <button type="button" id="btnPaste" class="studio-pressable absolute right-2 px-2.5 py-1.5 rounded-lg bg-surface-850 hover:bg-surface-800 border border-white/[0.08] text-xs font-medium text-slate-300 flex items-center gap-1">
-              <i data-lucide="clipboard" class="w-3.5 h-3.5 text-slate-400"></i>
-              <span>Paste</span>
-            </button>
+            <span style="font-size: 12px; color: var(--text-secondary);">Step 1 of 2 &middot; Add your video</span>
           </div>
 
-          <!-- Showcase Presets -->
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 pt-1">
-            <button type="button" class="sample-chip studio-pressable text-left p-2.5 rounded-xl bg-surface-950 hover:bg-surface-850 border border-white/[0.07] hover:border-brand-500/40" data-url="https://www.youtube.com/watch?v=UF8uR6Z6KLc">
-              <div class="flex items-center justify-between text-[11px] font-mono text-rose-400 mb-0.5">
-                <span>LIVE YOUTUBE</span>
-                <span>15:04</span>
-              </div>
-              <div class="text-xs font-semibold text-white truncate">Steve Jobs Stanford Speech</div>
-            </button>
-            <button type="button" class="sample-chip studio-pressable text-left p-2.5 rounded-xl bg-surface-950 hover:bg-surface-850 border border-white/[0.07] hover:border-brand-500/40" data-url="demo://creator-podcast">
-              <div class="flex items-center justify-between text-[11px] font-mono text-emerald-400 mb-0.5">
-                <span>INSTANT DEMO</span>
-                <span>10:20</span>
-              </div>
-              <div class="text-xs font-semibold text-white truncate">Creator Economy Masterclass</div>
-            </button>
-            <button type="button" class="sample-chip studio-pressable text-left p-2.5 rounded-xl bg-surface-950 hover:bg-surface-850 border border-white/[0.07] hover:border-brand-500/40" data-url="demo://huberman-dopamine">
-              <div class="flex items-center justify-between text-[11px] font-mono text-cyan-400 mb-0.5">
-                <span>INSTANT DEMO</span>
-                <span>08:00</span>
-              </div>
-              <div class="text-xs font-semibold text-white truncate">Huberman: Dopamine Focus</div>
-            </button>
-            <button type="button" class="sample-chip studio-pressable text-left p-2.5 rounded-xl bg-surface-950 hover:bg-surface-850 border border-white/[0.07] hover:border-brand-500/40" data-url="demo://hormozi-offers">
-              <div class="flex items-center justify-between text-[11px] font-mono text-amber-400 mb-0.5">
-                <span>INSTANT DEMO</span>
-                <span>06:30</span>
-              </div>
-              <div class="text-xs font-semibold text-white truncate">Hormozi: $100M Value Offers</div>
-            </button>
-          </div>
-        </div>
-
-        <!-- Local Upload Panel -->
-        <div id="uploadSourcePanel" class="hidden">
-          <label for="fileUploadInput" id="dropZone" class="flex flex-col items-center justify-center border-2 border-dashed border-white/[0.12] hover:border-brand-500/60 bg-surface-950 rounded-xl p-6 cursor-pointer transition-colors">
-            <div class="w-10 h-10 rounded-full bg-brand-600/15 border border-brand-500/30 flex items-center justify-center mb-2">
-              <i data-lucide="film" class="w-5 h-5 text-brand-400"></i>
+          <!-- YouTube URL Panel -->
+          <div id="youtubeSourcePanel" style="display: flex; flex-direction: column; gap: 10px;">
+            <label for="urlInput" style="font-size: 13px; font-weight: 600; color: var(--text-primary); display: flex; align-items: center; justify-content: space-between;">
+              <span>YouTube Video URL</span>
+              <span id="urlStatusHint" style="font-size: 11.5px; font-weight: 500; color: var(--text-secondary);">Public YouTube links &amp; Shorts supported</span>
+            </label>
+            <div style="position: relative; display: flex; align-items: center;">
+              <i data-lucide="link-2" style="position: absolute; left: 15px; width: 16px; height: 16px; color: var(--accent); pointer-events: none;"></i>
+              <input
+                type="url"
+                id="urlInput"
+                value="https://www.youtube.com/watch?v=UF8uR6Z6KLc"
+                placeholder="https://www.youtube.com/watch?v=... or youtu.be/..."
+                class="kn-input"
+                style="padding-left: 42px; padding-right: 92px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px;"
+              />
+              <button type="button" id="btnPaste" class="kn-pressable" style="position: absolute; right: 7px; min-height: 34px; padding: 6px 12px; border-radius: 9px; border: 1px solid var(--border-hairline); background: var(--bg-subtle); font-size: 12px; font-weight: 600; color: var(--text-primary); display: inline-flex; align-items: center; gap: 5px;">
+                <i data-lucide="clipboard" style="width: 13px; height: 13px;"></i>
+                <span>Paste</span>
+              </button>
             </div>
-            <p class="text-xs sm:text-sm font-semibold text-white" id="uploadLabelText">Drop any MP4, MOV, MKV, or WEBM file here</p>
-            <p class="text-[11px] text-slate-500 mt-1">Processed locally with FFmpeg + Faster-Whisper AI speech-to-text</p>
-            <input type="file" id="fileUploadInput" accept=".mp4,.mov,.mkv,.webm,.m4v,video/*" class="hidden" />
-          </label>
-        </div>
-
-        <!-- AutoCut Configuration Grid -->
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-          <div class="space-y-1.5">
-            <label class="text-[11px] font-semibold text-slate-400 flex items-center gap-1.5">
-              <i data-lucide="layers" class="w-3.5 h-3.5 text-brand-400"></i>
-              <span>Clips to Extract</span>
-            </label>
-            <select id="clipsCountSelect" class="w-full bg-surface-950 border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-brand-500 font-mono">
-              <option value="10">10 Clips (Focused)</option>
-              <option value="12" selected>12 Clips (Optimal)</option>
-              <option value="15">15 Clips (Deep Scan)</option>
-              <option value="20">20 Clips (Full Podcast)</option>
-            </select>
           </div>
 
-          <div class="space-y-1.5">
-            <label class="text-[11px] font-semibold text-slate-400 flex items-center gap-1.5">
-              <i data-lucide="clock" class="w-3.5 h-3.5 text-emerald-400"></i>
-              <span>Target Clip Length</span>
+          <!-- Upload Video Panel -->
+          <div id="uploadSourcePanel" class="hidden">
+            <label for="fileUploadInput" id="dropZone" class="kn-pressable" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; border: 2px dashed rgba(0, 0, 0, 0.14); border-radius: 16px; padding: 30px 20px; background: var(--bg-subtle); text-align: center;">
+              <div style="width: 46px; height: 46px; border-radius: 50%; background: var(--accent-soft); display: flex; align-items: center; justify-content: center;">
+                <i data-lucide="film" style="width: 22px; height: 22px; color: var(--accent);"></i>
+              </div>
+              <p id="uploadLabelText" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;">Drop any MP4, MOV, MKV, or WEBM file here</p>
+              <p style="font-size: 12px; color: var(--text-secondary); margin: 0;">Direct file upload works reliably on both Local and Cloud deployments</p>
+              <input type="file" id="fileUploadInput" accept=".mp4,.mov,.mkv,.webm,.m4v,video/*" class="hidden" />
             </label>
-            <select id="durationSelect" class="w-full bg-surface-950 border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-brand-500 font-mono">
-              <option value="30">15s – 40s (Quick Hooks)</option>
-              <option value="45" selected>30s – 60s (Viral Shorts)</option>
-              <option value="75">60s – 90s (Extended Reels)</option>
-              <option value="150">2 – 3 Min (Mini Story)</option>
-              <option value="210">3 – 4 Min (Deep Dive Chapter)</option>
-            </select>
           </div>
 
-          <div class="space-y-1.5">
-            <label class="text-[11px] font-semibold text-slate-400 flex items-center gap-1.5">
-              <i data-lucide="crop" class="w-3.5 h-3.5 text-cyan-400"></i>
-              <span>Frame & Aspect Layout</span>
-            </label>
-            <select id="layoutSelect" class="w-full bg-surface-950 border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-brand-500">
-              <option value="blur_margins" selected>9:16 Cinematic Blur</option>
-              <option value="center_crop">9:16 Center Crop</option>
-              <option value="square_1_1">1:1 Square Feed</option>
-              <option value="landscape_16_9">16:9 Widescreen</option>
-              <option value="split_screen">9:16 Split Screen</option>
-            </select>
+          <!-- Step 1 Primary Actions -->
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-top: 4px;">
+            <button type="button" id="btnWizardNext" class="kn-pressable kn-btn-primary" style="flex: 1; min-width: 210px;">
+              <span>Next: Choose Clips to Extract</span>
+              <i data-lucide="arrow-right" style="width: 16px; height: 16px;"></i>
+            </button>
+            <button type="button" id="btnQuickDemo" class="kn-pressable kn-btn-secondary">
+              <i data-lucide="play-circle" style="width: 16px; height: 16px; color: var(--success);"></i>
+              <span>Instant Studio Demo</span>
+            </button>
           </div>
-        </div>
 
-        <!-- Visual Caption Preset Selector (Swatches!) -->
-        <div class="space-y-2">
-          <div class="flex items-center justify-between">
-            <label class="text-[11px] font-semibold text-slate-400 flex items-center gap-1.5">
-              <i data-lucide="type" class="w-3.5 h-3.5 text-amber-400"></i>
-              <span>Dynamic Subtitle Style</span>
-            </label>
-            <select id="captionSelect" class="hidden">
-              <option value="hormozi" selected>hormozi</option>
-              <option value="mrbeast">mrbeast</option>
-              <option value="tiktok">tiktok</option>
-              <option value="neon">neon</option>
-              <option value="minimal">minimal</option>
-              <option value="podcast">podcast</option>
-            </select>
-            <label class="inline-flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer">
-              <input type="checkbox" id="chkHookBanner" checked class="rounded border-white/20 bg-surface-950 text-brand-500 focus:ring-0" />
-              <span>Burn Top Hook Banner</span>
-            </label>
-          </div>
-          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2" id="launcherCaptionSwatches">
-            <button type="button" class="caption-swatch active studio-pressable p-2.5 rounded-xl bg-surface-950 border border-white/[0.08] text-left" data-style="hormozi">
-              <div class="text-[11px] font-extrabold tracking-tight uppercase"><span class="text-white">THE </span><span class="px-1 rounded bg-emerald-500 text-black">SECRET</span></div>
-              <div class="text-[10px] text-slate-400 mt-1">Hormozi Pill</div>
-            </button>
-            <button type="button" class="caption-swatch studio-pressable p-2.5 rounded-xl bg-surface-950 border border-white/[0.08] text-left" data-style="mrbeast">
-              <div class="text-[11px] font-extrabold tracking-tight uppercase"><span class="text-yellow-300">WAIT </span><span class="text-rose-500">WHAT?!</span></div>
-              <div class="text-[10px] text-slate-400 mt-1">MrBeast Pop</div>
-            </button>
-            <button type="button" class="caption-swatch studio-pressable p-2.5 rounded-xl bg-surface-950 border border-white/[0.08] text-left" data-style="tiktok">
-              <div class="text-[11px] font-bold"><span class="text-white">Go </span><span class="text-[#FE2C55]">viral</span><span class="text-white"> fast</span></div>
-              <div class="text-[10px] text-slate-400 mt-1">TikTok Pink</div>
-            </button>
-            <button type="button" class="caption-swatch studio-pressable p-2.5 rounded-xl bg-surface-950 border border-white/[0.08] text-left" data-style="neon">
-              <div class="text-[11px] font-extrabold uppercase"><span class="text-cyan-300">10X </span><span class="text-fuchsia-400">GROWTH</span></div>
-              <div class="text-[10px] text-slate-400 mt-1">Cyber Neon</div>
-            </button>
-            <button type="button" class="caption-swatch studio-pressable p-2.5 rounded-xl bg-surface-950 border border-white/[0.08] text-left" data-style="minimal">
-              <div class="text-[11px] font-semibold"><span class="px-1.5 py-0.5 rounded bg-black/80 text-white">Clean text</span></div>
-              <div class="text-[10px] text-slate-400 mt-1">Minimal Pro</div>
-            </button>
-            <button type="button" class="caption-swatch studio-pressable p-2.5 rounded-xl bg-surface-950 border border-white/[0.08] text-left" data-style="podcast">
-              <div class="text-[11px] font-bold"><span class="text-white">Real </span><span class="text-amber-400">talk</span></div>
-              <div class="text-[10px] text-slate-400 mt-1">Deep Podcast</div>
-            </button>
+          <!-- Curated Quick Samples & Instant Studio Demo Presets -->
+          <div style="padding-top: 10px; border-top: 1px solid var(--border-hairline); display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+              <span style="font-size: 12px; font-weight: 700; color: var(--text-primary);">Instant Demos &amp; Live Samples</span>
+              <span style="font-size: 11.5px; color: var(--text-secondary);">Click any card to adjust &amp; clip right away</span>
+            </div>
+            <div class="grid-presets">
+              <button type="button" class="sample-chip kn-pressable kn-subcard" style="padding: 11px 12px; text-align: left;" data-url="https://www.youtube.com/watch?v=UF8uR6Z6KLc">
+                <div style="display: flex; align-items: center; justify-content: space-between; font-size: 10.5px; font-weight: 700; color: var(--danger); margin-bottom: 3px;">
+                  <span>YOUTUBE TALK</span>
+                  <span class="kn-tabular">15:04</span>
+                </div>
+                <div style="font-size: 12.5px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Steve Jobs Stanford Speech</div>
+              </button>
+              <button type="button" class="sample-chip kn-pressable kn-subcard" style="padding: 11px 12px; text-align: left;" data-url="demo://creator-podcast">
+                <div style="display: flex; align-items: center; justify-content: space-between; font-size: 10.5px; font-weight: 700; color: var(--success); margin-bottom: 3px;">
+                  <span>INSTANT DEMO</span>
+                  <span class="kn-tabular">10:20</span>
+                </div>
+                <div style="font-size: 12.5px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Creator Economy Masterclass</div>
+              </button>
+              <button type="button" class="sample-chip kn-pressable kn-subcard" style="padding: 11px 12px; text-align: left;" data-url="demo://huberman-dopamine">
+                <div style="display: flex; align-items: center; justify-content: space-between; font-size: 10.5px; font-weight: 700; color: var(--accent); margin-bottom: 3px;">
+                  <span>INSTANT DEMO</span>
+                  <span class="kn-tabular">08:00</span>
+                </div>
+                <div style="font-size: 12.5px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Huberman: Dopamine Focus</div>
+              </button>
+              <button type="button" class="sample-chip kn-pressable kn-subcard" style="padding: 11px 12px; text-align: left;" data-url="demo://hormozi-offers">
+                <div style="display: flex; align-items: center; justify-content: space-between; font-size: 10.5px; font-weight: 700; color: var(--warning); margin-bottom: 3px;">
+                  <span>INSTANT DEMO</span>
+                  <span class="kn-tabular">06:30</span>
+                </div>
+                <div style="font-size: 12.5px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Hormozi: $100M Value Offers</div>
+              </button>
+            </div>
           </div>
         </div>
 
-        <!-- Primary Action CTA -->
-        <div class="flex flex-col sm:flex-row gap-2.5 pt-1">
-          <button type="submit" id="btnSubmit" class="studio-pressable flex-1 py-3.5 px-6 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-brand-600/20">
-            <i data-lucide="wand-2" class="w-4 h-4"></i>
-            <span>AutoCut & Discover Viral Clips</span>
-          </button>
-          <button type="button" id="btnQuickDemo" class="studio-pressable px-4 py-3.5 rounded-xl bg-surface-850 hover:bg-surface-800 border border-white/[0.08] text-xs font-semibold text-slate-200 flex items-center justify-center gap-1.5">
-            <i data-lucide="play-circle" class="w-4 h-4 text-emerald-400"></i>
-            <span>Instant Studio Demo</span>
-          </button>
+        <!-- STEP 2: CLIPS TO EXTRACT & STYLE -->
+        <div id="wizardStep2" class="hidden" style="display: flex; flex-direction: column; gap: 20px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding-bottom: 14px; border-bottom: 1px solid var(--border-hairline);">
+            <div>
+              <h2 style="font-size: 17px; font-weight: 700; letter-spacing: -0.02em; margin: 0; color: var(--text-primary);">Clips to Extract</h2>
+              <p id="step2SourceSummary" style="font-size: 12.5px; color: var(--text-secondary); margin: 2px 0 0; max-width: 520px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Configured source ready</p>
+            </div>
+            <span style="font-size: 12px; color: var(--text-secondary);">Step 2 of 2 &middot; Output setup</span>
+          </div>
+
+          <!-- Interactive Touch-Friendly Clips Count Pills -->
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <label for="clipsCountSelect" style="font-size: 12.5px; font-weight: 700; color: var(--text-primary); display: inline-flex; align-items: center; gap: 6px;">
+                <i data-lucide="layers" style="width: 15px; height: 15px; color: var(--accent);"></i>
+                <span>How many clips should Klipnux extract?</span>
+              </label>
+              <select id="clipsCountSelect" class="kn-select" style="width: auto; min-height: 34px; font-size: 12px;">
+                <option value="5">5 Clips</option>
+                <option value="10">10 Clips</option>
+                <option value="12" selected>12 Clips (Optimal)</option>
+                <option value="15">15 Clips</option>
+                <option value="20">20 Clips</option>
+              </select>
+            </div>
+            <div id="clipsCountPills" class="grid-5">
+              <button type="button" class="kn-count-pill kn-pressable" data-count="5">
+                <strong class="kn-tabular" style="font-size: 15px;">5</strong>
+                <span style="font-size: 11px; color: var(--text-secondary);">Top Hooks</span>
+              </button>
+              <button type="button" class="kn-count-pill kn-pressable" data-count="10">
+                <strong class="kn-tabular" style="font-size: 15px;">10</strong>
+                <span style="font-size: 11px; color: var(--text-secondary);">Focused</span>
+              </button>
+              <button type="button" class="kn-count-pill active kn-pressable" data-count="12">
+                <strong class="kn-tabular" style="font-size: 15px;">12</strong>
+                <span style="font-size: 11px; color: var(--accent); font-weight: 600;">Optimal</span>
+              </button>
+              <button type="button" class="kn-count-pill kn-pressable" data-count="15">
+                <strong class="kn-tabular" style="font-size: 15px;">15</strong>
+                <span style="font-size: 11px; color: var(--text-secondary);">Deep Scan</span>
+              </button>
+              <button type="button" class="kn-count-pill kn-pressable" data-count="20">
+                <strong class="kn-tabular" style="font-size: 15px;">20</strong>
+                <span style="font-size: 11px; color: var(--text-secondary);">Full Pack</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Target Duration & Aspect Ratio -->
+          <div class="grid-2" style="gap: 12px;">
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <label for="durationSelect" style="font-size: 12px; font-weight: 700; color: var(--text-primary); display: inline-flex; align-items: center; gap: 6px;">
+                <i data-lucide="clock" style="width: 14px; height: 14px; color: var(--success);"></i>
+                <span>Target Clip Length</span>
+              </label>
+              <select id="durationSelect" class="kn-select">
+                <option value="30">15s - 40s (Quick Hooks)</option>
+                <option value="45" selected>30s - 60s (Viral Shorts)</option>
+                <option value="75">60s - 90s (Extended Reels)</option>
+                <option value="150">2 - 3 Min (Mini Story)</option>
+                <option value="210">3 - 4 Min (Deep Chapter)</option>
+              </select>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <label for="layoutSelect" style="font-size: 12px; font-weight: 700; color: var(--text-primary); display: inline-flex; align-items: center; gap: 6px;">
+                <i data-lucide="crop" style="width: 14px; height: 14px; color: var(--accent);"></i>
+                <span>Frame &amp; Aspect Layout</span>
+              </label>
+              <select id="layoutSelect" class="kn-select">
+                <option value="blur_margins" selected>9:16 Cinematic Blur</option>
+                <option value="center_crop">9:16 Center Crop</option>
+                <option value="square_1_1">1:1 Square Feed</option>
+                <option value="landscape_16_9">16:9 Widescreen</option>
+                <option value="split_screen">9:16 Split Screen</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Caption Presets -->
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+              <span style="font-size: 12px; font-weight: 700; color: var(--text-primary); display: inline-flex; align-items: center; gap: 6px;">
+                <i data-lucide="type" style="width: 14px; height: 14px; color: var(--warning);"></i>
+                <span>Dynamic Subtitle Style</span>
+              </span>
+              <select id="captionSelect" class="hidden">
+                <option value="hormozi" selected>hormozi</option>
+                <option value="mrbeast">mrbeast</option>
+                <option value="tiktok">tiktok</option>
+                <option value="neon">neon</option>
+                <option value="minimal">minimal</option>
+                <option value="podcast">podcast</option>
+              </select>
+              <label class="kn-switch">
+                <input type="checkbox" id="chkHookBanner" checked />
+                <span class="kn-switch-track"><span class="kn-switch-thumb"></span></span>
+                <span style="font-size: 12px; font-weight: 600; color: var(--text-secondary);">Top Hook Banner</span>
+              </label>
+            </div>
+
+            <div class="grid-swatches" id="launcherCaptionSwatches">
+              <button type="button" class="caption-swatch active kn-pressable" data-style="hormozi">
+                <div class="caption-swatch-stage">
+                  <span style="font-size: 11px; font-weight: 800; color: #ffffff;">THE </span>
+                  <span style="font-size: 11px; font-weight: 800; padding: 1px 5px; border-radius: 4px; background: #22c55e; color: #052e16;">SECRET</span>
+                </div>
+                <div style="font-size: 11px; font-weight: 600; color: var(--text-primary);">Hormozi Pill</div>
+              </button>
+              <button type="button" class="caption-swatch kn-pressable" data-style="mrbeast">
+                <div class="caption-swatch-stage">
+                  <span style="font-size: 11px; font-weight: 800; color: #fde047;">WAIT </span>
+                  <span style="font-size: 11px; font-weight: 800; color: #f43f5e;">WHAT?!</span>
+                </div>
+                <div style="font-size: 11px; font-weight: 600; color: var(--text-primary);">MrBeast Pop</div>
+              </button>
+              <button type="button" class="caption-swatch kn-pressable" data-style="tiktok">
+                <div class="caption-swatch-stage">
+                  <span style="font-size: 11px; font-weight: 700; color: #ffffff;">Go </span>
+                  <span style="font-size: 11px; font-weight: 800; color: #fe2c55;">viral</span>
+                </div>
+                <div style="font-size: 11px; font-weight: 600; color: var(--text-primary);">TikTok Pink</div>
+              </button>
+              <button type="button" class="caption-swatch kn-pressable" data-style="neon">
+                <div class="caption-swatch-stage">
+                  <span style="font-size: 11px; font-weight: 800; color: #22d3ee;">10X </span>
+                  <span style="font-size: 11px; font-weight: 800; color: #e879f9;">GROWTH</span>
+                </div>
+                <div style="font-size: 11px; font-weight: 600; color: var(--text-primary);">Cyber Neon</div>
+              </button>
+              <button type="button" class="caption-swatch kn-pressable" data-style="minimal">
+                <div class="caption-swatch-stage">
+                  <span style="font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.16); color: #ffffff;">Clean text</span>
+                </div>
+                <div style="font-size: 11px; font-weight: 600; color: var(--text-primary);">Minimal Pro</div>
+              </button>
+              <button type="button" class="caption-swatch kn-pressable" data-style="podcast">
+                <div class="caption-swatch-stage">
+                  <span style="font-size: 11px; font-weight: 700; color: #ffffff;">Real </span>
+                  <span style="font-size: 11px; font-weight: 800; color: #fbbf24;">talk</span>
+                </div>
+                <div style="font-size: 11px; font-weight: 600; color: var(--text-primary);">Deep Podcast</div>
+              </button>
+            </div>
+          </div>
+
+          <!-- Step 2 Footer Actions -->
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-top: 6px;">
+            <button type="button" id="btnWizardBack" class="kn-pressable kn-btn-secondary">
+              <i data-lucide="arrow-left" style="width: 15px; height: 15px;"></i>
+              <span>Back</span>
+            </button>
+            <button type="submit" id="btnSubmit" class="kn-pressable kn-btn-primary" style="flex: 1; min-width: 220px;">
+              <i data-lucide="scissors" style="width: 16px; height: 16px;"></i>
+              <span>Start Clipping &amp; Preview First Clip</span>
+            </button>
+          </div>
         </div>
+
       </form>
     </section>
 
-    <!-- Existing Rendered Library on Disk (Populated dynamically from /api/clips) -->
-    <section id="existingLibrarySection" class="hidden bg-surface-900 border border-white/[0.07] rounded-2xl p-4 space-y-3">
-      <div class="flex items-center justify-between">
-        <span class="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-          <i data-lucide="folder-check" class="w-4 h-4 text-emerald-400"></i>
-          <span>Rendered Clips Library (<span id="libraryCountBadge">0</span>)</span>
+    <!-- Existing Rendered Library on Disk -->
+    <section id="existingLibrarySection" class="hidden kn-card" style="padding: 18px 20px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 10px; flex-wrap: wrap;">
+        <span style="font-size: 13px; font-weight: 700; color: var(--text-primary); display: inline-flex; align-items: center; gap: 7px;">
+          <i data-lucide="folder-check" style="width: 16px; height: 16px; color: var(--success);"></i>
+          <span>Rendered Clips Library (<span id="libraryCountBadge" class="kn-tabular">0</span>)</span>
         </span>
-        <span class="text-[11px] text-slate-500">Click to preview or download existing exports</span>
+        <span style="font-size: 12px; color: var(--text-secondary);">Ready MP4 exports available for immediate download</span>
       </div>
-      <div id="libraryGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5"></div>
+      <div id="libraryGrid" class="grid-lib"></div>
     </section>
   </main>
 
   <!-- =========================================================
-       VIEW B: REAL-TIME PIPELINE LOADING STATE
+       VIEW B: REAL-TIME PIPELINE PROGRESS
   ========================================================== -->
-  <section id="processingSection" class="hidden flex-1 flex items-center justify-center px-4 py-12 animate-panel">
-    <div class="max-w-lg w-full bg-surface-900 border border-white/[0.08] rounded-2xl p-6 sm:p-8 space-y-5 shadow-2xl">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-xl bg-brand-600/15 border border-brand-500/30 flex items-center justify-center">
-            <div class="w-5 h-5 rounded-full border-2 border-brand-400 border-t-transparent animate-spin"></div>
+  <section id="processingSection" class="hidden animate-panel" style="flex: 1; display: flex; align-items: center; justify-content: center; padding: 48px 16px;">
+    <div class="kn-card" style="max-width: 500px; width: 100%; padding: 28px; display: flex; flex-direction: column; gap: 20px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+        <div style="display: flex; align-items: center; gap: 14px; min-width: 0;">
+          <div style="width: 44px; height: 44px; border-radius: 14px; background: var(--accent-soft); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            <div style="width: 22px; height: 22px; border-radius: 50%; border: 2.5px solid var(--accent); border-top-color: transparent;" class="animate-spin"></div>
           </div>
-          <div>
-            <h3 id="processStatusTitle" class="text-sm sm:text-base font-bold text-white">Initializing AutoCut Pipeline...</h3>
-            <p id="processStatusDesc" class="text-xs text-slate-400 mt-0.5">Connecting to video stream...</p>
+          <div style="min-width: 0;">
+            <h3 id="processStatusTitle" style="font-size: 15.5px; font-weight: 700; color: var(--text-primary); margin: 0;">Initializing Klipnux...</h3>
+            <p id="processStatusDesc" style="font-size: 12.5px; color: var(--text-secondary); margin: 3px 0 0;">Connecting to video stream...</p>
           </div>
         </div>
-        <span id="processElapsedTimer" class="text-xs font-mono text-brand-300 font-semibold bg-surface-950 px-2.5 py-1 rounded-lg border border-white/[0.07]">0.0s</span>
+        <span id="processElapsedTimer" class="kn-badge kn-badge-blue kn-tabular" style="font-size: 12px; padding: 4px 10px; font-weight: 700;">0.0s</span>
       </div>
 
-      <!-- Progress Bar -->
-      <div class="space-y-1.5">
-        <div class="w-full h-2 bg-surface-950 rounded-full overflow-hidden border border-white/[0.06]">
-          <div id="progressBar" class="h-full bg-brand-500 transition-all duration-300" style="width: 12%"></div>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <div style="width: 100%; height: 7px; border-radius: 999px; background: var(--bg-muted); overflow: hidden;">
+          <div id="progressBar" style="width: 12%; height: 100%; background: var(--accent); border-radius: 999px; transition: width 280ms var(--ease-spring);"></div>
         </div>
-        <div class="flex items-center justify-between text-[11px] font-mono">
-          <span id="step1" class="text-brand-400 font-semibold">1. Ingest</span>
-          <span id="step2" class="text-slate-500">2. Transcript</span>
-          <span id="step3" class="text-slate-500">3. AI Score</span>
-          <span id="step4" class="text-slate-500">4. Ready</span>
+        <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px;">
+          <span id="step1" style="color: var(--accent); font-weight: 700;">1. Ingest</span>
+          <span id="step2" style="color: var(--text-tertiary);">2. Transcript</span>
+          <span id="step3" style="color: var(--text-tertiary);">3. Score Clips</span>
+          <span id="step4" style="color: var(--text-tertiary);">4. Cut First Clip</span>
         </div>
       </div>
 
-      <div class="flex justify-end pt-1">
-        <button type="button" id="btnCancelAnalysis" class="studio-pressable px-3 py-1.5 rounded-lg bg-surface-850 hover:bg-surface-800 border border-white/[0.08] text-xs text-slate-300">Cancel</button>
+      <div style="display: flex; justify-content: flex-end;">
+        <button type="button" id="btnCancelAnalysis" class="kn-pressable kn-btn-secondary" style="min-height: 36px; padding: 6px 16px; font-size: 12.5px;">Cancel</button>
       </div>
     </div>
   </section>
 
   <!-- =========================================================
-       VIEW C: PRO 3-PANE AUTOCUT STUDIO WORKSPACE
+       VIEW C: APPLE-STYLE STUDIO PREVIEW & TRIM WORKSPACE
   ========================================================== -->
-  <section id="resultsSection" class="hidden flex-1 max-w-[1440px] w-full mx-auto px-4 lg:px-6 py-4 space-y-4 animate-panel">
+  <section id="resultsSection" class="hidden animate-panel" style="flex: 1; max-width: 1440px; width: 100%; margin: 0 auto; padding: 16px 16px 40px; display: flex; flex-direction: column; gap: 14px;">
 
-    <!-- Top Video Strip & Batch Toolbar -->
-    <div class="bg-surface-900 border border-white/[0.08] rounded-xl p-3 flex flex-col md:flex-row md:items-center justify-between gap-3">
-      <div class="flex items-center gap-3 min-w-0">
-        <img id="videoThumb" src="" alt="Source Video" class="w-16 h-10 object-cover rounded-lg border border-white/[0.08] bg-surface-950 shrink-0" />
-        <div class="min-w-0">
-          <h2 id="videoTitle" class="text-xs sm:text-sm font-bold text-white truncate">Analyzed Video</h2>
-          <div class="flex flex-wrap items-center gap-2 text-[11px] text-slate-400 font-mono mt-0.5">
-            <span id="videoChannel" class="text-slate-300 font-sans font-medium">Channel</span>
-            <span>·</span>
-            <span>Duration: <strong id="timelineDurationBadge" class="text-slate-200">0:00</strong></span>
-            <span>·</span>
-            <span id="clipsFoundBadge" class="text-emerald-400 font-semibold">12 Viral Clips</span>
+    <!-- Top Video Banner & Batch Controls -->
+    <div class="kn-card" style="padding: 14px 16px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;">
+      <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+        <img id="videoThumb" src="" alt="Source Video" style="width: 64px; height: 40px; object-fit: cover; border-radius: 10px; border: 1px solid var(--border-hairline); background: var(--bg-muted); flex-shrink: 0;" />
+        <div style="min-width: 0;">
+          <h2 id="videoTitle" style="font-size: 14.5px; font-weight: 700; color: var(--text-primary); margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Analyzed Video</h2>
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); margin-top: 2px;">
+            <span id="videoChannel" style="font-weight: 600; color: var(--text-primary);">Channel</span>
+            <span>&middot;</span>
+            <span>Duration: <strong id="timelineDurationBadge" class="kn-tabular">0:00</strong></span>
+            <span>&middot;</span>
+            <span id="clipsFoundBadge" class="kn-badge kn-badge-green kn-tabular">12 Viral Clips</span>
           </div>
         </div>
       </div>
 
-      <div class="flex flex-wrap items-center gap-2 shrink-0">
-        <button type="button" id="btnBatchRenderAll" class="studio-pressable px-3 py-1.5 rounded-lg bg-surface-850 hover:bg-surface-800 text-slate-200 font-semibold text-xs border border-white/[0.08] flex items-center gap-1.5">
-          <i data-lucide="layers" class="w-3.5 h-3.5 text-brand-400"></i>
-          <span id="batchBtnLabel">Batch Render Selected (0)</span>
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex-shrink: 0;">
+        <button type="button" id="btnBatchRenderAll" class="kn-pressable kn-btn-secondary" style="min-height: 38px; padding: 7px 14px; font-size: 12.5px;">
+          <i data-lucide="layers" style="width: 14px; height: 14px; color: var(--accent);"></i>
+          <span id="batchBtnLabel">Batch Cut Selected (0)</span>
         </button>
-        <button type="button" id="btnDownloadZip" class="studio-pressable px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center gap-1.5">
-          <i data-lucide="download" class="w-3.5 h-3.5"></i>
-          <span>Download .ZIP Pack</span>
+        <button type="button" id="btnDownloadZip" class="kn-pressable kn-btn-success" style="min-height: 38px; padding: 7px 14px; font-size: 12.5px; border-radius: 980px;">
+          <i data-lucide="download" style="width: 14px; height: 14px;"></i>
+          <span>Download ZIP Pack</span>
         </button>
       </div>
     </div>
 
-    <!-- Proportional Full-Video Retention Heatmap Bar -->
-    <div class="bg-surface-900 border border-white/[0.08] rounded-xl px-3.5 py-2.5 space-y-1.5">
-      <div class="flex items-center justify-between text-[11px]">
-        <span class="font-semibold text-slate-300 flex items-center gap-1.5">
-          <i data-lucide="activity" class="w-3.5 h-3.5 text-brand-400"></i>
-          <span>Full-Timeline Viral Retention Map</span>
+    <!-- Retention Heatmap -->
+    <div class="kn-card" style="padding: 12px 16px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; font-size: 12px;">
+        <span style="font-weight: 700; color: var(--text-primary); display: inline-flex; align-items: center; gap: 6px;">
+          <i data-lucide="activity" style="width: 14px; height: 14px; color: var(--accent);"></i>
+          <span>Timeline Retention Map</span>
         </span>
-        <span class="text-slate-500 font-mono">Click any highlighted segment to inspect & edit</span>
+        <span class="hide-xs" style="font-size: 11.5px; color: var(--text-secondary);">Tap any highlighted moment to preview &amp; cut</span>
       </div>
-      <div id="timelineTrackContainer" class="relative w-full h-7 bg-surface-950 rounded-lg border border-white/[0.06] overflow-visible">
-        <div id="timelineTrack" class="relative w-full h-full"></div>
+      <div id="timelineTrackContainer" style="position: relative; width: 100%; height: 28px; background: var(--bg-subtle); border-radius: 10px; border: 1px solid var(--border-hairline); overflow: visible;">
+        <div id="timelineTrack" style="position: relative; width: 100%; height: 100%;"></div>
       </div>
     </div>
 
-    <!-- 3-Pane Desktop Studio Grid -->
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+    <!-- Mobile / Tablet Workspace Segmented Switcher (< 1024px) -->
+    <div id="mobilePaneTabs" style="display: flex; justify-content: center;">
+      <div class="kn-segmented" style="width: 100%; max-width: 440px;">
+        <button type="button" class="mobile-tab-btn kn-seg-btn active kn-pressable" data-pane="preview" style="flex: 1;">
+          <i data-lucide="play" style="width: 13px; height: 13px;"></i>
+          <span>Preview</span>
+        </button>
+        <button type="button" class="mobile-tab-btn kn-seg-btn kn-pressable" data-pane="clips" style="flex: 1;">
+          <i data-lucide="layers" style="width: 13px; height: 13px;"></i>
+          <span>Clips</span>
+        </button>
+        <button type="button" class="mobile-tab-btn kn-seg-btn kn-pressable" data-pane="inspector" style="flex: 1;">
+          <i data-lucide="sliders-horizontal" style="width: 13px; height: 13px;"></i>
+          <span>Adjust</span>
+        </button>
+      </div>
+    </div>
 
-      <!-- PANE 1 (Left): Viral Clips Queue (4 cols) -->
-      <div class="lg:col-span-4 bg-surface-900 border border-white/[0.08] rounded-xl p-3 space-y-3">
-        <div class="flex items-center justify-between gap-2">
-          <label class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-300 cursor-pointer">
-            <input type="checkbox" id="chkSelectAllClips" class="rounded border-white/20 bg-surface-950 text-brand-500 focus:ring-0" />
-            <span>Clips Queue (<span id="countAll">0</span>)</span>
+    <!-- Responsive 3-Pane Studio Grid -->
+    <div id="workspaceGrid">
+
+      <!-- PANE 1: Clips Queue -->
+      <div id="paneClips" class="kn-card mobile-pane-hidden" style="padding: 14px; display: flex; flex-direction: column; gap: 10px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+          <label style="display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 700; color: var(--text-primary); cursor: pointer;">
+            <input type="checkbox" id="chkSelectAllClips" style="width: 15px; height: 15px; accent-color: var(--accent);" />
+            <span>Clips Queue (<span id="countAll" class="kn-tabular">0</span>)</span>
           </label>
-          <select id="sortClipsSelect" class="bg-surface-950 border border-white/[0.08] rounded-md px-2 py-1 text-[11px] text-slate-300 font-mono focus:outline-none">
-            <option value="timeline">Sort: Timeline ↑</option>
-            <option value="score">Sort: Virality Score ↓</option>
+          <select id="sortClipsSelect" class="kn-select" style="width: auto; min-height: 32px; font-size: 11.5px; padding: 4px 26px 4px 10px;">
+            <option value="timeline">Timeline</option>
+            <option value="score">Top Score</option>
           </select>
         </div>
 
-        <!-- Dynamic Category Filter Pills -->
-        <div id="categoryFilterBar" class="flex flex-wrap gap-1.5 text-[11px]"></div>
+        <div id="categoryFilterBar" style="display: flex; flex-wrap: wrap; gap: 6px;"></div>
 
-        <!-- Scrollable Queue List -->
-        <div id="clipCardsList" class="space-y-2 max-h-[68vh] overflow-y-auto pr-1"></div>
+        <div id="clipCardsList" style="display: flex; flex-direction: column; gap: 8px; max-height: 64vh; overflow-y: auto; padding-right: 4px;"></div>
       </div>
 
-      <!-- PANE 2 (Center): Live Device Canvas & Real Waveform (4 cols) -->
-      <div class="lg:col-span-4 lg:sticky lg:top-16 bg-surface-900 border border-white/[0.08] rounded-xl p-4 flex flex-col items-center space-y-3">
-
-        <!-- Canvas Toolbar: Aspect Switcher & Caption Style Quick Pick -->
-        <div class="w-full flex items-center justify-between gap-2">
-          <div class="inline-flex p-0.5 rounded-lg bg-surface-950 border border-white/[0.08] text-[11px]">
-            <button type="button" class="aspect-btn active px-2.5 py-1 rounded-md bg-brand-600 text-white font-bold studio-pressable" data-aspect="9:16">9:16</button>
-            <button type="button" class="aspect-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-white font-medium studio-pressable" data-aspect="1:1">1:1</button>
-            <button type="button" class="aspect-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-white font-medium studio-pressable" data-aspect="16:9">16:9</button>
+      <!-- PANE 2: Center Live Stage & Scrubber -->
+      <div id="panePreview" class="kn-card" style="padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 12px;">
+        <div style="width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
+          <div class="kn-segmented" style="padding: 2px;">
+            <button type="button" class="aspect-btn active kn-seg-btn kn-pressable" data-aspect="9:16" style="min-height: 30px; padding: 4px 10px; font-size: 11.5px;">9:16</button>
+            <button type="button" class="aspect-btn kn-seg-btn kn-pressable" data-aspect="1:1" style="min-height: 30px; padding: 4px 10px; font-size: 11.5px;">1:1</button>
+            <button type="button" class="aspect-btn kn-seg-btn kn-pressable" data-aspect="16:9" style="min-height: 30px; padding: 4px 10px; font-size: 11.5px;">16:9</button>
           </div>
 
-          <div class="flex items-center gap-1.5">
-            <select id="workspaceCaptionSelect" class="bg-surface-950 border border-white/[0.08] rounded-lg px-2 py-1 text-[11px] text-slate-200 focus:outline-none focus:border-brand-500">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <select id="workspaceCaptionSelect" class="kn-select" style="width: auto; min-height: 32px; font-size: 11.5px; padding: 4px 26px 4px 10px;">
               <option value="hormozi">Hormozi Pill</option>
               <option value="mrbeast">MrBeast Pop</option>
               <option value="tiktok">TikTok Pink</option>
@@ -430,224 +537,243 @@
               <option value="minimal">Minimal Box</option>
               <option value="podcast">Deep Podcast</option>
             </select>
-            <button type="button" id="btnPlaybackSpeed" class="px-2 py-1 rounded-lg bg-surface-950 border border-white/[0.08] text-[11px] font-mono text-slate-300 hover:text-white studio-pressable" title="Playback Speed">1x</button>
+            <button type="button" id="btnPlaybackSpeed" class="kn-pressable kn-icon-btn kn-tabular" style="min-height: 32px; padding: 4px 10px; font-size: 11.5px;" title="Playback Speed">1x</button>
           </div>
         </div>
 
-        <!-- Device Preview Frame -->
-        <div id="deviceFrame" class="w-full max-w-[265px] aspect-[9/16] bg-black rounded-[28px] p-2 border-2 border-surface-750 shadow-2xl relative overflow-hidden flex flex-col">
-          <div class="relative w-full h-full rounded-[20px] overflow-hidden bg-surface-950 flex items-center justify-center">
+        <!-- Phone / Canvas Frame -->
+        <div id="deviceFrame">
+          <div style="position: relative; width: 100%; height: 100%; border-radius: 23px; overflow: hidden; background: #0f1116; display: flex; align-items: center; justify-content: center;">
 
-            <!-- HTML5 MP4 Player -->
-            <video id="previewVideo" class="w-full h-full object-cover hidden" controls playsinline muted loop></video>
+            <video id="previewVideo" class="hidden" style="width: 100%; height: 100%; object-fit: cover;" controls playsinline muted loop></video>
 
-            <!-- YouTube Embed Source Preview (shown for YouTube before render) -->
-            <iframe id="sourceYoutubeFrame" class="w-full h-full object-cover hidden rounded-[20px]" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+            <iframe id="sourceYoutubeFrame" class="hidden" style="width: 100%; height: 100%; border: none; border-radius: 23px;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
 
-            <!-- Floating Mute/Unmute Toggle -->
-            <button type="button" id="btnToggleSound" class="hidden studio-pressable absolute top-3 right-3 z-40 bg-surface-950/85 hover:bg-surface-800 text-white p-2 rounded-full border border-white/[0.15] backdrop-blur-md" title="Unmute / Mute Audio">
-              <i data-lucide="volume-x" id="soundIcon" class="w-3.5 h-3.5 text-amber-400"></i>
+            <button type="button" id="btnToggleSound" class="hidden kn-pressable" style="position: absolute; top: 12px; right: 12px; z-index: 40; width: 34px; height: 34px; border-radius: 50%; background: rgba(0, 0, 0, 0.58); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.22); color: #ffffff; display: flex; align-items: center; justify-content: center;" title="Unmute / Mute Audio">
+              <i data-lucide="volume-x" id="soundIcon" style="width: 15px; height: 15px; color: #fbbf24;"></i>
             </button>
 
-            <!-- Pre-Render Live Style Preview Poster -->
-            <div id="playerPlaceholder" class="absolute inset-0 flex flex-col justify-between p-4 text-center bg-gradient-to-b from-surface-900 via-surface-950 to-black">
-              <div class="space-y-2 pt-2">
-                <span id="stageCategoryPill" class="inline-block px-2 py-0.5 rounded bg-brand-500/15 border border-brand-500/30 text-brand-300 text-[10px] font-bold uppercase tracking-wider">VIRAL CLIP</span>
-                <!-- Live Hook Banner Mockup -->
-                <div id="liveBannerPreview" class="mx-auto max-w-[92%] px-3 py-1.5 rounded-lg bg-surface-950/90 border border-white/[0.12] text-[11px] font-extrabold text-emerald-400 uppercase tracking-tight leading-snug">
+            <!-- Pre-Render Stage Preview Poster -->
+            <div id="playerPlaceholder" style="position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; padding: 18px 14px; text-align: center; background: linear-gradient(180deg, #1d1d22 0%, #0b0c10 100%); color: #ffffff;">
+              <div style="display: flex; flex-direction: column; gap: 8px; padding-top: 4px;">
+                <span id="stageCategoryPill" class="kn-badge" style="align-self: center; background: rgba(0, 113, 227, 0.22); color: #93c5fd; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;">VIRAL CLIP</span>
+                <div id="liveBannerPreview" style="margin: 0 auto; max-width: 92%; padding: 6px 10px; border-radius: 8px; background: rgba(0, 0, 0, 0.72); border: 1px solid rgba(255, 255, 255, 0.16); font-size: 11px; font-weight: 800; color: #4ade80; text-transform: uppercase; line-height: 1.3;">
                   Hook Banner Preview
                 </div>
               </div>
 
-              <div class="space-y-1.5 px-2">
-                <p id="stageTimestamp" class="text-[11px] font-mono text-slate-400">0:00 – 0:00 (0s)</p>
-                <div id="liveCaptionPreview" class="text-sm font-black uppercase tracking-tight leading-tight text-white drop-shadow">
-                  LIVE <span class="px-1.5 py-0.5 rounded bg-emerald-500 text-black">CAPTION</span> STYLE
+              <div style="display: flex; flex-direction: column; gap: 6px; padding: 0 6px;">
+                <p id="stageTimestamp" class="kn-tabular" style="font-size: 11px; color: rgba(255, 255, 255, 0.6); margin: 0;">0:00 - 0:00 (0s)</p>
+                <div id="liveCaptionPreview" style="font-size: 14px; font-weight: 900; text-transform: uppercase; line-height: 1.25;">
+                  LIVE <span style="padding: 1px 6px; border-radius: 4px; background: #22c55e; color: #052e16;">CAPTION</span> STYLE
                 </div>
-                <p id="renderStatusHint" class="text-[10px] font-mono text-slate-500">Click below to cut & burn 1080p MP4</p>
+                <p id="renderStatusHint" style="font-size: 11px; color: rgba(255, 255, 255, 0.55); margin: 2px 0 0;">Click below to cut 1080p MP4</p>
               </div>
 
-              <button type="button" id="btnStageRender" class="studio-pressable w-full py-2.5 px-3 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md">
-                <i data-lucide="scissors" class="w-3.5 h-3.5"></i>
-                <span>Cut & Render Clip</span>
+              <button type="button" id="btnStageRender" class="kn-pressable kn-btn-primary" style="width: 100%; border-radius: 14px;">
+                <i data-lucide="scissors" style="width: 15px; height: 15px;"></i>
+                <span>Cut &amp; Render Clip</span>
               </button>
             </div>
 
-            <!-- In-Stage Rendering Spinner Overlay -->
-            <div id="stageRenderingOverlay" class="hidden absolute inset-0 z-50 bg-surface-950/90 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center space-y-2.5">
-              <div class="w-8 h-8 rounded-full border-2 border-brand-400 border-t-transparent animate-spin"></div>
-              <p class="text-xs font-bold text-white">Cutting & Burning Subtitles...</p>
-              <p id="stageRenderTimer" class="text-[11px] font-mono text-brand-300">0.0s elapsed</p>
+            <!-- In-Stage Cutting Spinner Overlay -->
+            <div id="stageRenderingOverlay" class="hidden" style="position: absolute; inset: 0; z-index: 50; background: rgba(17, 17, 20, 0.88); backdrop-filter: blur(8px); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 18px; text-align: center; gap: 10px; color: #ffffff;">
+              <div style="width: 34px; height: 34px; border-radius: 50%; border: 3px solid rgba(255, 255, 255, 0.25); border-top-color: #ffffff;" class="animate-spin"></div>
+              <p style="font-size: 13.5px; font-weight: 700; margin: 0;">Cutting &amp; Burning Captions...</p>
+              <p id="stageRenderTimer" class="kn-tabular" style="font-size: 11.5px; color: #93c5fd; margin: 0;">0.0s elapsed</p>
+            </div>
+
+            <!-- In-Stage Error Recovery Overlay -->
+            <div id="stageErrorOverlay" class="hidden" style="position: absolute; inset: 0; z-index: 48; background: rgba(255, 255, 255, 0.96); backdrop-filter: blur(8px); display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 18px; text-align: center; gap: 10px; color: var(--text-primary);">
+              <div style="width: 38px; height: 38px; border-radius: 50%; background: var(--danger-soft); color: var(--danger); display: flex; align-items: center; justify-content: center;">
+                <i data-lucide="alert-circle" style="width: 20px; height: 20px;"></i>
+              </div>
+              <p style="font-size: 13px; font-weight: 700; margin: 0;">Unable to cut this video segment</p>
+              <p id="stageErrorMessage" style="font-size: 11.5px; color: var(--text-secondary); margin: 0; line-height: 1.4;"></p>
+              <div style="display: flex; flex-direction: column; gap: 6px; width: 100%; margin-top: 4px;">
+                <button type="button" id="btnRetryStageCut" class="kn-pressable kn-btn-primary" style="width: 100%; min-height: 36px; font-size: 12px;">Retry Cut</button>
+                <button type="button" id="btnStageSwitchUpload" class="kn-pressable kn-btn-secondary" style="width: 100%; min-height: 36px; font-size: 12px;">Upload MP4 Video Instead</button>
+                <button type="button" id="btnStageOpenCookies" class="kn-pressable kn-btn-secondary" style="width: 100%; min-height: 34px; font-size: 11.5px;">Add YouTube Cookies / Demo</button>
+              </div>
             </div>
           </div>
         </div>
 
-        <!-- Audio Waveform Energy Scrubber -->
-        <div class="w-full bg-surface-950 border border-white/[0.07] rounded-xl p-2.5 space-y-1.5">
-          <div class="flex items-center justify-between text-[10px] font-mono text-slate-400">
-            <span class="text-slate-300 font-semibold">Audio Energy Scrubber</span>
-            <span id="waveformTimecode" class="text-brand-300">0:00 / 0:00</span>
+        <!-- 1:1 Pointer-Capture Audio Energy Waveform Scrubber -->
+        <div class="kn-subcard" style="width: 100%; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px;">
+            <span style="font-weight: 600; color: var(--text-primary);">Audio Energy Scrubber</span>
+            <span id="waveformTimecode" class="kn-tabular" style="font-weight: 600; color: var(--accent);">0:00 / 0:00</span>
           </div>
-          <div id="waveformContainer" class="relative w-full h-8 flex items-end gap-[2px] px-1 py-1 bg-surface-900/60 rounded cursor-pointer overflow-hidden border border-white/[0.04]">
-            <div id="waveformPlayhead" class="absolute top-0 bottom-0 w-0.5 bg-emerald-400 z-20 pointer-events-none" style="left: 0%"></div>
+          <div id="waveformContainer" style="position: relative; width: 100%; height: 34px; display: flex; align-items: flex-end; gap: 2px; padding: 4px 6px; background: #ffffff; border-radius: 8px; border: 1px solid var(--border-hairline); cursor: ew-resize; overflow: hidden;">
+            <div id="waveformPlayhead" style="position: absolute; top: 0; bottom: 0; width: 2px; background: var(--success-bright); z-index: 20; pointer-events: none; left: 0%;"></div>
           </div>
         </div>
 
-        <!-- Primary Download Button -->
-        <button type="button" id="btnDownloadClip" class="studio-pressable w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20">
-          <i data-lucide="download" class="w-4 h-4"></i>
+        <!-- Download MP4 Button -->
+        <button type="button" id="btnDownloadClip" class="kn-pressable kn-btn-success" style="width: 100%;">
+          <i data-lucide="download" style="width: 16px; height: 16px;"></i>
           <span>Download MP4 Clip</span>
         </button>
       </div>
 
-      <!-- PANE 3 (Right): Clip Inspector, Boundary Trimmer & Editable Transcript (4 cols) -->
-      <div class="lg:col-span-4 space-y-3">
+      <!-- PANE 3: Inspector, Boundaries & Transcript -->
+      <div id="paneInspector" class="mobile-pane-hidden" style="display: flex; flex-direction: column; gap: 12px;">
 
-        <!-- Hook Title & Banner Card -->
-        <div class="bg-surface-900 border border-white/[0.08] rounded-xl p-3.5 space-y-2">
-          <div class="flex items-center justify-between text-[11px]">
-            <label for="inputHookTitle" class="font-bold text-slate-300 flex items-center gap-1.5">
-              <i data-lucide="heading" class="w-3.5 h-3.5 text-brand-400"></i>
+        <!-- Hook Title Card -->
+        <div class="kn-card" style="padding: 14px; display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+            <label for="inputHookTitle" style="font-size: 12.5px; font-weight: 700; color: var(--text-primary); display: inline-flex; align-items: center; gap: 6px;">
+              <i data-lucide="heading" style="width: 14px; height: 14px; color: var(--accent);"></i>
               <span>Hook Title Banner</span>
             </label>
-            <label class="inline-flex items-center gap-1 text-slate-400 cursor-pointer">
-              <input type="checkbox" id="chkWorkspaceBanner" checked class="rounded border-white/20 bg-surface-950 text-brand-500 focus:ring-0" />
-              <span>Show Top Banner</span>
+            <label class="kn-switch">
+              <input type="checkbox" id="chkWorkspaceBanner" checked />
+              <span class="kn-switch-track"><span class="kn-switch-thumb"></span></span>
+              <span style="font-size: 11.5px; color: var(--text-secondary);">Show</span>
             </label>
           </div>
-          <input type="text" id="inputHookTitle" class="w-full bg-surface-950 border border-white/[0.08] rounded-lg px-3 py-2 text-xs font-semibold text-white focus:outline-none focus:border-brand-500" placeholder="Enter viral hook banner title..." />
+          <input type="text" id="inputHookTitle" class="kn-input" style="min-height: 40px; padding: 8px 12px; font-size: 13px; font-weight: 600;" placeholder="Enter viral hook title..." />
         </div>
 
-        <!-- Precision Trimmer Card -->
-        <div class="bg-surface-900 border border-white/[0.08] rounded-xl p-3.5 space-y-2.5">
-          <div class="flex items-center justify-between text-xs">
-            <span class="font-bold text-slate-300 flex items-center gap-1.5">
-              <i data-lucide="scissors" class="w-3.5 h-3.5 text-brand-400"></i>
+        <!-- Precision Cut Boundaries -->
+        <div class="kn-card" style="padding: 14px; display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 12.5px; font-weight: 700; color: var(--text-primary); display: inline-flex; align-items: center; gap: 6px;">
+              <i data-lucide="scissors" style="width: 14px; height: 14px; color: var(--accent);"></i>
               <span>Cut Boundaries</span>
             </span>
-            <span id="trimmerDurationBadge" class="font-mono text-[11px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">0:45 (45s)</span>
+            <span id="trimmerDurationBadge" class="kn-badge kn-badge-green kn-tabular">0:45 (45s)</span>
           </div>
 
-          <div class="grid grid-cols-2 gap-2 font-mono text-[11px]">
-            <div class="space-y-1">
-              <span class="text-[10px] font-sans text-slate-400">Start (mm:ss)</span>
-              <div class="flex items-center bg-surface-950 border border-white/[0.08] rounded-lg overflow-hidden">
-                <button type="button" id="btnStartMinus5" class="px-1.5 py-1.5 hover:bg-surface-800 text-slate-400 hover:text-white">-5s</button>
-                <input type="text" id="inputStartTime" value="0:00" class="w-full bg-transparent text-center text-white font-bold focus:outline-none text-xs" />
-                <button type="button" id="btnStartPlus5" class="px-1.5 py-1.5 hover:bg-surface-800 text-slate-400 hover:text-white">+5s</button>
+          <div class="grid-2">
+            <div>
+              <span style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Start (mm:ss)</span>
+              <div style="display: flex; align-items: center; border: 1.5px solid var(--border-hairline); border-radius: 10px; background: #ffffff; overflow: hidden;">
+                <button type="button" id="btnStartMinus5" class="kn-pressable" style="min-height: 36px; padding: 0 9px; border: none; background: var(--bg-subtle); font-size: 11.5px; font-weight: 600; color: var(--text-secondary);">-5s</button>
+                <input type="text" id="inputStartTime" value="0:00" class="kn-tabular" style="width: 100%; border: none; background: transparent; text-align: center; font-weight: 700; font-size: 13px; color: var(--text-primary); outline: none;" />
+                <button type="button" id="btnStartPlus5" class="kn-pressable" style="min-height: 36px; padding: 0 9px; border: none; background: var(--bg-subtle); font-size: 11.5px; font-weight: 600; color: var(--text-secondary);">+5s</button>
               </div>
             </div>
-            <div class="space-y-1">
-              <span class="text-[10px] font-sans text-slate-400">End (mm:ss)</span>
-              <div class="flex items-center bg-surface-950 border border-white/[0.08] rounded-lg overflow-hidden">
-                <button type="button" id="btnEndMinus5" class="px-1.5 py-1.5 hover:bg-surface-800 text-slate-400 hover:text-white">-5s</button>
-                <input type="text" id="inputEndTime" value="0:45" class="w-full bg-transparent text-center text-white font-bold focus:outline-none text-xs" />
-                <button type="button" id="btnEndPlus5" class="px-1.5 py-1.5 hover:bg-surface-800 text-slate-400 hover:text-white">+5s</button>
+            <div>
+              <span style="font-size: 11px; color: var(--text-secondary); display: block; margin-bottom: 4px;">End (mm:ss)</span>
+              <div style="display: flex; align-items: center; border: 1.5px solid var(--border-hairline); border-radius: 10px; background: #ffffff; overflow: hidden;">
+                <button type="button" id="btnEndMinus5" class="kn-pressable" style="min-height: 36px; padding: 0 9px; border: none; background: var(--bg-subtle); font-size: 11.5px; font-weight: 600; color: var(--text-secondary);">-5s</button>
+                <input type="text" id="inputEndTime" value="0:45" class="kn-tabular" style="width: 100%; border: none; background: transparent; text-align: center; font-weight: 700; font-size: 13px; color: var(--text-primary); outline: none;" />
+                <button type="button" id="btnEndPlus5" class="kn-pressable" style="min-height: 36px; padding: 0 9px; border: none; background: var(--bg-subtle); font-size: 11.5px; font-weight: 600; color: var(--text-secondary);">+5s</button>
               </div>
             </div>
           </div>
 
-          <div class="flex items-center justify-between gap-1.5">
-            <div class="flex items-center gap-1">
-              <button type="button" class="btn-extend-clip studio-pressable px-2 py-1 rounded bg-surface-950 hover:bg-surface-800 border border-white/[0.07] text-[10px] font-mono text-slate-300" data-duration="45">45s</button>
-              <button type="button" class="btn-extend-clip studio-pressable px-2 py-1 rounded bg-surface-950 hover:bg-surface-800 border border-white/[0.07] text-[10px] font-mono text-slate-300" data-duration="90">90s</button>
-              <button type="button" class="btn-extend-clip studio-pressable px-2 py-1 rounded bg-surface-950 hover:bg-surface-800 border border-white/[0.07] text-[10px] font-mono text-slate-300" data-duration="180">3m</button>
-              <button type="button" class="btn-extend-clip studio-pressable px-2 py-1 rounded bg-surface-950 hover:bg-surface-800 border border-white/[0.07] text-[10px] font-mono text-slate-300" data-duration="240">4m</button>
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 5px;">
+              <button type="button" class="btn-extend-clip kn-pressable kn-icon-btn kn-tabular" style="min-height: 30px; padding: 4px 10px; font-size: 11px;" data-duration="45">45s</button>
+              <button type="button" class="btn-extend-clip kn-pressable kn-icon-btn kn-tabular" style="min-height: 30px; padding: 4px 10px; font-size: 11px;" data-duration="90">90s</button>
+              <button type="button" class="btn-extend-clip kn-pressable kn-icon-btn kn-tabular" style="min-height: 30px; padding: 4px 10px; font-size: 11px;" data-duration="180">3m</button>
+              <button type="button" class="btn-extend-clip kn-pressable kn-icon-btn kn-tabular" style="min-height: 30px; padding: 4px 10px; font-size: 11px;" data-duration="240">4m</button>
             </div>
-            <button type="button" id="btnRenderCustomCut" class="studio-pressable px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold flex items-center gap-1">
-              <i data-lucide="zap" class="w-3 h-3 fill-white"></i>
-              <span>Render Cut</span>
+            <button type="button" id="btnRenderCustomCut" class="kn-pressable kn-btn-primary" style="min-height: 34px; padding: 6px 14px; font-size: 12px;">
+              <i data-lucide="zap" style="width: 13px; height: 13px;"></i>
+              <span>Cut &amp; Apply</span>
             </button>
           </div>
         </div>
 
-        <!-- AI Virality Scorecard Card -->
-        <div class="bg-surface-900 border border-white/[0.08] rounded-xl p-3.5 space-y-2.5">
-          <div class="flex items-center justify-between text-xs">
-            <span class="font-bold text-slate-300 flex items-center gap-1.5">
-              <i data-lucide="bar-chart-3" class="w-3.5 h-3.5 text-emerald-400"></i>
-              <span>AI Virality Breakdown</span>
+        <!-- AI Virality Scorecard -->
+        <div class="kn-card" style="padding: 14px; display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 12.5px; font-weight: 700; color: var(--text-primary); display: inline-flex; align-items: center; gap: 6px;">
+              <i data-lucide="bar-chart-3" style="width: 14px; height: 14px; color: var(--success);"></i>
+              <span>Virality Breakdown</span>
             </span>
-            <span id="inspectorScoreBadge" class="font-mono text-xs font-bold text-emerald-400">95/100</span>
+            <span id="inspectorScoreBadge" class="kn-badge kn-badge-green kn-tabular" style="font-weight: 700;">95/100</span>
           </div>
-          <div class="grid grid-cols-3 gap-2 font-mono text-[11px]">
-            <div class="bg-surface-950 rounded-lg p-2 border border-white/[0.05]">
-              <div class="text-[10px] text-slate-500">Hook</div>
-              <div id="metricHookVal" class="text-brand-300 font-bold">95%</div>
+          <div class="grid-3" style="gap: 8px;">
+            <div class="kn-subcard" style="padding: 8px 10px;">
+              <div style="font-size: 10.5px; color: var(--text-secondary);">Hook</div>
+              <div id="metricHookVal" class="kn-tabular" style="font-size: 13px; font-weight: 700; color: var(--accent);">95%</div>
             </div>
-            <div class="bg-surface-950 rounded-lg p-2 border border-white/[0.05]">
-              <div class="text-[10px] text-slate-500">Retention</div>
-              <div id="metricRetentionVal" class="text-emerald-400 font-bold">93%</div>
+            <div class="kn-subcard" style="padding: 8px 10px;">
+              <div style="font-size: 10.5px; color: var(--text-secondary);">Retention</div>
+              <div id="metricRetentionVal" class="kn-tabular" style="font-size: 13px; font-weight: 700; color: var(--success);">93%</div>
             </div>
-            <div class="bg-surface-950 rounded-lg p-2 border border-white/[0.05]">
-              <div class="text-[10px] text-slate-500">Energy</div>
-              <div id="metricEnergyVal" class="text-amber-400 font-bold">94%</div>
+            <div class="kn-subcard" style="padding: 8px 10px;">
+              <div style="font-size: 10.5px; color: var(--text-secondary);">Energy</div>
+              <div id="metricEnergyVal" class="kn-tabular" style="font-size: 13px; font-weight: 700; color: var(--warning);">94%</div>
             </div>
           </div>
-          <p id="inspectorReasoning" class="text-[11px] text-slate-400 leading-relaxed bg-surface-950/60 rounded-lg p-2 border border-white/[0.04]">
+          <p id="inspectorReasoning" style="font-size: 12px; color: var(--text-secondary); line-height: 1.45; background: var(--bg-subtle); border-radius: 10px; padding: 9px 10px; margin: 0;">
             High-curiosity opening with rhythmic cadence.
           </p>
         </div>
 
-        <!-- Interactive Click-to-Seek & Editable Transcript Card -->
-        <div class="bg-surface-900 border border-white/[0.08] rounded-xl p-3.5 space-y-2">
-          <div class="flex items-center justify-between text-xs">
-            <span class="font-bold text-slate-300 flex items-center gap-1.5">
-              <i data-lucide="subtitles" class="w-3.5 h-3.5 text-amber-400"></i>
+        <!-- Click-to-Seek & Editable Transcript -->
+        <div class="kn-card" style="padding: 14px; display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 12.5px; font-weight: 700; color: var(--text-primary); display: inline-flex; align-items: center; gap: 6px;">
+              <i data-lucide="subtitles" style="width: 14px; height: 14px; color: var(--warning);"></i>
               <span>Interactive Transcript</span>
             </span>
-            <button type="button" id="btnToggleEditWords" class="studio-pressable px-2 py-0.5 rounded bg-surface-950 hover:bg-surface-800 border border-white/[0.08] text-[10px] font-mono text-brand-300">
+            <button type="button" id="btnToggleEditWords" class="kn-pressable kn-icon-btn" style="min-height: 28px; padding: 3px 10px; font-size: 11px; color: var(--accent);">
               Edit Words
             </button>
           </div>
-          <p class="text-[10px] text-slate-500" id="transcriptHelpHint">Click any word to jump playback · Click "Edit Words" to correct spelling before render</p>
-          <div id="inspectorTranscriptBox" class="bg-surface-950 border border-white/[0.06] rounded-lg p-2.5 max-h-44 overflow-y-auto text-xs text-slate-200 leading-relaxed flex flex-wrap gap-1"></div>
+          <p id="transcriptHelpHint" style="font-size: 11px; color: var(--text-secondary); margin: 0;">Tap any word to jump playback or click "Edit Words" to customize burned captions</p>
+          <div id="inspectorTranscriptBox" class="kn-subcard" style="padding: 10px; max-height: 165px; overflow-y: auto; display: flex; flex-wrap: wrap; gap: 4px;"></div>
         </div>
 
-        <!-- SEO Copy Card -->
-        <div class="bg-surface-900 border border-white/[0.08] rounded-xl p-3.5 space-y-2">
-          <div class="flex items-center justify-between text-xs">
-            <span class="font-bold text-slate-300">YouTube Shorts / Reels SEO</span>
-            <button type="button" id="btnCopyMeta" class="studio-pressable px-2.5 py-1 rounded-lg bg-surface-850 hover:bg-surface-800 border border-white/[0.08] text-[11px] font-semibold text-brand-300 flex items-center gap-1">
-              <i data-lucide="copy" class="w-3 h-3"></i>
+        <!-- Social SEO Pack -->
+        <div class="kn-card" style="padding: 14px; display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 12.5px; font-weight: 700; color: var(--text-primary);">Shorts &amp; Reels SEO Copy</span>
+            <button type="button" id="btnCopyMeta" class="kn-pressable kn-icon-btn" style="min-height: 30px; padding: 4px 10px; font-size: 11.5px; color: var(--accent);">
+              <i data-lucide="copy" style="width: 12px; height: 12px;"></i>
               <span>Copy Pack</span>
             </button>
           </div>
-          <p id="seoPreviewText" class="text-[11px] font-mono text-slate-400 line-clamp-2">#shorts #viral #reels</p>
+          <p id="seoPreviewText" style="font-size: 11.5px; color: var(--text-secondary); margin: 0; line-height: 1.45;">#shorts #viral #reels</p>
         </div>
-      </div>
 
+      </div>
     </div>
   </section>
 
-  <!-- API Key & Studio Settings Modal -->
-  <div id="settingsModal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-    <div class="max-w-md w-full bg-surface-900 border border-white/[0.1] rounded-2xl p-5 space-y-4 shadow-2xl animate-panel">
-      <div class="flex items-center justify-between">
-        <h3 class="text-sm font-bold text-white flex items-center gap-2">
-          <i data-lucide="key" class="w-4 h-4 text-amber-400"></i>
-          <span>Studio API Key & Engine Settings</span>
+  <!-- API Key & YouTube Cloud Cookies Settings Modal -->
+  <div id="settingsModal" class="hidden" style="position: fixed; inset: 0; z-index: 90; background: rgba(0, 0, 0, 0.28); backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; padding: 16px;">
+    <div class="kn-card animate-pop" style="max-width: 460px; width: 100%; padding: 22px; display: flex; flex-direction: column; gap: 16px; box-shadow: var(--shadow-float);">
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <h3 style="font-size: 15px; font-weight: 700; color: var(--text-primary); margin: 0; display: inline-flex; align-items: center; gap: 8px;">
+          <i data-lucide="sliders-horizontal" style="width: 16px; height: 16px; color: var(--accent);"></i>
+          <span>Klipnux Engine Settings</span>
         </h3>
-        <button type="button" id="btnCloseSettings" class="text-slate-400 hover:text-white p-1">
-          <i data-lucide="x" class="w-4 h-4"></i>
+        <button type="button" id="btnCloseSettings" class="kn-pressable" style="border: none; background: transparent; color: var(--text-secondary); padding: 4px;">
+          <i data-lucide="x" style="width: 18px; height: 18px;"></i>
         </button>
       </div>
-      <div class="space-y-2 text-xs">
-        <label for="inputSettingsApiKey" class="block text-slate-400 font-semibold">Active API Key</label>
-        <input type="text" id="inputSettingsApiKey" class="w-full bg-surface-950 border border-white/[0.1] rounded-lg px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-brand-500" placeholder="Enter API key..." />
-        <p class="text-[11px] text-slate-500">Stored in backend session config. Current max clip length: <span class="text-emerald-400 font-mono">360s (6 mins)</span>.</p>
+
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <label for="inputSettingsApiKey" style="font-size: 12px; font-weight: 600; color: var(--text-primary);">Studio API Key</label>
+        <input type="text" id="inputSettingsApiKey" class="kn-input" style="min-height: 40px; padding: 8px 12px; font-size: 12.5px; font-family: ui-monospace, monospace;" placeholder="Enter API key..." />
+        <p style="font-size: 11px; color: var(--text-secondary); margin: 0;">Max clip duration: <strong style="color: var(--success);">360s (6 mins)</strong></p>
       </div>
-      <div class="flex justify-end gap-2 pt-1">
-        <button type="button" id="btnCancelSettings" class="px-3 py-1.5 rounded-lg bg-surface-850 text-xs text-slate-300">Close</button>
-        <button type="button" id="btnSaveSettings" class="studio-pressable px-4 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-xs font-semibold text-white">Save Key</button>
+
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <label for="inputSettingsCookies" style="font-size: 12px; font-weight: 600; color: var(--text-primary);">Optional YouTube Cookies (Netscape Format)</label>
+        <textarea id="inputSettingsCookies" rows="4" class="kn-input" style="min-height: 84px; padding: 10px 12px; font-size: 11.5px; font-family: ui-monospace, monospace; resize: vertical;" placeholder="# Netscape HTTP Cookie File&#10;Paste exported youtube.com cookies if cloud deployments encounter YouTube bot checks..."></textarea>
+        <p id="cookiesStatusHint" style="font-size: 11px; color: var(--text-secondary); margin: 0;">Not set &middot; optional for cloud servers</p>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 8px;">
+        <button type="button" id="btnCancelSettings" class="kn-pressable kn-btn-secondary" style="min-height: 36px; padding: 6px 14px; font-size: 12.5px;">Close</button>
+        <button type="button" id="btnSaveSettings" class="kn-pressable kn-btn-primary" style="min-height: 36px; padding: 6px 16px; font-size: 12.5px;">Save Settings</button>
       </div>
     </div>
   </div>
 
   <!-- Toast Notification -->
-  <div id="toast" class="fixed bottom-5 right-5 z-50 transform translate-y-16 opacity-0 pointer-events-none transition-all duration-200">
-    <div id="toastBox" class="bg-surface-900 border border-brand-500/40 text-white px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2 text-xs font-semibold">
-      <i data-lucide="check-circle" id="toastIcon" class="w-4 h-4 text-emerald-400"></i>
+  <div id="toast" class="toast-hidden">
+    <div id="toastBox" class="kn-toast-box">
+      <i data-lucide="check-circle" id="toastIcon" style="width: 17px; height: 17px; color: var(--success); flex-shrink: 0;"></i>
       <span id="toastMessage">Ready</span>
     </div>
   </div>

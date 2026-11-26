@@ -1,18 +1,44 @@
-import os
+import json
 import re
 import shutil
 import subprocess
-from urllib.parse import urlparse, parse_qs
+import urllib.request
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import parse_qs, quote, urlparse
+
 try:
     import numpy as np
 except ImportError:
     np = None
+
 import yt_dlp
 from yt_dlp.utils import download_range_func
-from backend.config import TEMP_DIR, UPLOADS_DIR, FFMPEG_PATH, BASE_DIR
-from backend.demo_datasets import get_demo_info
+
+from backend.config import BASE_DIR, COOKIES_PATH, FFMPEG_PATH, TEMP_DIR, UPLOADS_DIR
+
+# Ordered by highest reliability against YouTube bot/anonymous checks
+PLAYER_CLIENT_PROFILES: List[Optional[Dict[str, Any]]] = [
+    {"youtube": {"player_client": ["tv_embedded"]}},
+    {"youtube": {"player_client": ["android_vr"]}},
+    {"youtube": {"player_client": ["ios"]}},
+    {"youtube": {"player_client": ["tv", "web"]}},
+    {"youtube": {"player_client": ["mweb"]}},
+    None,
+]
+
+
+def build_ytdlp_opts(
+    base_opts: Optional[Dict[str, Any]] = None,
+    client_profile: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Builds consistent yt-dlp options with optional cookiefile and player client args."""
+    opts: Dict[str, Any] = dict(base_opts or {})
+    if client_profile:
+        opts["extractor_args"] = client_profile
+    if COOKIES_PATH.exists() and COOKIES_PATH.stat().st_size > 20:
+        opts["cookiefile"] = str(COOKIES_PATH)
+    return opts
 
 
 class VideoDownloader:
@@ -60,7 +86,7 @@ class VideoDownloader:
         """Fetches real metadata without downloading the full video."""
         clean_url = url.strip()
         if clean_url.startswith("demo://") or clean_url in ("demo", "sample"):
-            return get_demo_info(clean_url)
+            return get_demo_info_safe(clean_url)
 
         if clean_url.startswith("local://"):
             return self._get_local_video_info(clean_url)
@@ -68,24 +94,17 @@ class VideoDownloader:
         if clean_url in self._info_cache:
             return self._info_cache[clean_url]
 
-        # Try default yt-dlp web/ios first, then alternative clients
-        client_profiles: List[Optional[Dict[str, Any]]] = [
-            None,
-            {'youtube': {'player_client': ['tv', 'web']}},
-            {'youtube': {'player_client': ['android', 'web_creator']}},
-        ]
-
         last_err = None
-        for profile in client_profiles:
-            ydl_opts: Dict[str, Any] = {
-                'skip_download': True,
-                'quiet': True,
-                'no_warnings': True,
-                'socket_timeout': 15,
-            }
-            if profile:
-                ydl_opts['extractor_args'] = profile
-
+        for profile in PLAYER_CLIENT_PROFILES:
+            ydl_opts = build_ytdlp_opts(
+                {
+                    "skip_download": True,
+                    "quiet": True,
+                    "no_warnings": True,
+                    "socket_timeout": 15,
+                },
+                profile,
+            )
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(clean_url, download=False)
@@ -97,17 +116,76 @@ class VideoDownloader:
                         "duration": int(info.get("duration") or 0),
                         "channel": info.get("uploader") or info.get("channel") or "YouTube Creator",
                         "thumbnail": info.get("thumbnail") or "",
-                        "subtitles": list((info.get("subtitles") or {}).keys()) + list((info.get("automatic_captions") or {}).keys()),
+                        "subtitles": list((info.get("subtitles") or {}).keys())
+                        + list((info.get("automatic_captions") or {}).keys()),
                         "is_demo": False,
                         "is_local": False,
                     }
                     self._info_cache[clean_url] = data
                     return data
-            except Exception as e:
-                last_err = e
+            except Exception as exc:
+                last_err = exc
                 continue
 
+        # Resilience fallback: YouTube oEmbed + watch HTML metadata when yt-dlp metadata is rate-limited
+        fallback_data = self._fetch_oembed_fallback(clean_url)
+        if fallback_data:
+            self._info_cache[clean_url] = fallback_data
+            return fallback_data
+
         raise RuntimeError(f"Unable to read YouTube video metadata: {last_err}")
+
+    def _fetch_oembed_fallback(self, url: str) -> Optional[Dict[str, Any]]:
+        vid = self.extract_video_id(url)
+        if not vid:
+            return None
+        canonical = f"https://www.youtube.com/watch?v={vid}"
+        title = None
+        author = None
+        thumb = f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
+        duration = 0
+
+        try:
+            oembed_url = f"https://www.youtube.com/oembed?url={quote(canonical, safe='')}&format=json"
+            req = urllib.request.Request(oembed_url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                title = data.get("title")
+                author = data.get("author_name")
+                thumb = data.get("thumbnail_url") or thumb
+        except Exception:
+            pass
+
+        try:
+            req_html = urllib.request.Request(
+                canonical,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+            )
+            with urllib.request.urlopen(req_html, timeout=8) as resp:
+                page = resp.read().decode("utf-8", errors="ignore")
+                m_dur = re.search(r'"lengthSeconds"\s*:\s*"(\d+)"', page)
+                if m_dur:
+                    duration = int(m_dur.group(1))
+                if not title:
+                    m_title = re.search(r"<title>(.*?)</title>", page, re.IGNORECASE | re.DOTALL)
+                    if m_title:
+                        title = re.sub(r"\s*-\s*YouTube\s*$", "", m_title.group(1)).strip()
+        except Exception:
+            pass
+
+        if not title and duration <= 0:
+            return None
+
+        return {
+            "id": vid,
+            "title": title or f"YouTube Video ({vid})",
+            "duration": max(60, duration),
+            "channel": author or "YouTube Creator",
+            "thumbnail": thumb,
+            "subtitles": ["en"],
+            "is_demo": False,
+            "is_local": False,
+        }
 
     def _get_local_video_info(self, url: str) -> Dict[str, Any]:
         filename = url.replace("local://", "", 1).strip()
@@ -121,7 +199,6 @@ class VideoDownloader:
         if m:
             dur = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(float(m.group(3)))
 
-        # Generate real poster frame thumbnail from uploaded video
         thumb_name = f"thumb_{file_path.stem}.jpg"
         thumb_path = TEMP_DIR / thumb_name
         if not thumb_path.exists():
@@ -153,52 +230,71 @@ class VideoDownloader:
     ) -> Path:
         """
         Extracts [start_sec, end_sec] with BOTH video + audio accurately.
-        Supports: local uploaded files, YouTube (dual-stream range seek -> download_ranges -> local cache), and studio demo mode.
+        Supports local uploaded files, YouTube (cached -> yt-dlp download_ranges across client profiles -> direct FFmpeg -> full <=720p cache), and demo mode.
         """
         out_path = self.output_dir / output_filename
         if out_path.exists() and out_path.stat().st_size > 10000:
             return out_path
 
         clean_url = url.strip()
-        duration = max(1.0, float(end_sec) - float(start_sec))
+        start_clamped = max(0.0, float(start_sec))
+        duration = max(1.0, float(end_sec) - start_clamped)
 
         if clean_url.startswith("demo://") or clean_url in ("demo", "sample"):
-            return self._generate_synthetic_video(start_sec, end_sec, out_path, "Studio Demo Preview")
+            return self._generate_synthetic_video(start_clamped, start_clamped + duration, out_path, "Klipnux Demo")
 
         if clean_url.startswith("local://"):
             filename = clean_url.replace("local://", "", 1).strip()
             src_path = (UPLOADS_DIR / filename).resolve()
             if not src_path.exists():
                 raise FileNotFoundError(f"Uploaded source video not found: {filename}")
-            self._cut_local_file(src_path, start_sec, duration, out_path)
+            self._cut_local_file(src_path, start_clamped, duration, out_path)
             return out_path
 
         video_id = self.extract_video_id(clean_url) or "yt"
 
-        # 0. Fast-path: check if source video was already cached locally
+        # 0. Fast-path: cached source video already on disk
         cached_src = self.output_dir / f"src_{video_id}.mp4"
         if cached_src.exists() and cached_src.stat().st_size > 50000:
-            self._cut_local_file(cached_src, start_sec, duration, out_path)
+            self._cut_local_file(cached_src, start_clamped, duration, out_path)
             if out_path.exists() and out_path.stat().st_size > 10000:
                 return out_path
 
-        # 1. Strategy A: Direct dual-stream FFmpeg HTTP range seek (fastest for long podcasts!)
-        if self._try_direct_ffmpeg_cut(clean_url, start_sec, duration, out_path):
-            return out_path
+        errors: List[str] = []
 
-        # 2. Strategy B: yt-dlp native download_ranges (handles signatures/HLS/manifests)
-        if self._try_ytdlp_range_download(clean_url, start_sec, end_sec, out_path):
+        # 1. Primary strategy: yt-dlp download_ranges across reliable player clients (avoids 403 header mismatches)
+        ok, err_msg = self._try_ytdlp_range_download(clean_url, start_clamped, start_clamped + duration, out_path)
+        if ok:
             return out_path
+        if err_msg:
+            errors.append(err_msg)
 
-        # 3. Strategy C: Download <=720p MP4 once to cache, then slice locally (100% reliable)
-        if self._download_cached_source(clean_url, cached_src):
-            self._cut_local_file(cached_src, start_sec, duration, out_path)
+        # 2. Fallback strategy: Direct dual-stream FFmpeg HTTP range seek across client profiles
+        ok, err_msg = self._try_direct_ffmpeg_cut(clean_url, start_clamped, duration, out_path)
+        if ok:
+            return out_path
+        if err_msg:
+            errors.append(err_msg)
+
+        # 3. Last-resort fallback: Download <=720p MP4 once to cache, then slice locally
+        ok, err_msg = self._download_cached_source(clean_url, cached_src)
+        if ok:
+            self._cut_local_file(cached_src, start_clamped, duration, out_path)
             if out_path.exists() and out_path.stat().st_size > 10000:
                 return out_path
+        if err_msg:
+            errors.append(err_msg)
+
+        joined = " | ".join(errors)
+        if "bot" in joined.lower() or "sign in" in joined.lower() or "cookies" in joined.lower():
+            raise RuntimeError(
+                "YouTube blocked automated download from this server IP ('Sign in to confirm you're not a bot'). "
+                "Add YouTube cookies in Studio Settings, upload the MP4 video directly, or test with Instant Demo."
+            )
 
         raise RuntimeError(
-            "Failed to stream or download video clip from YouTube. "
-            "YouTube may have blocked/rate-limited this video, or it is private/restricted. "
+            "Failed to stream or cut clip from YouTube. "
+            "The video may be restricted, age-gated, or rate-limited. "
             "Try another public link or upload an MP4 video directly."
         )
 
@@ -208,8 +304,9 @@ class VideoDownloader:
             "-ss", f"{max(0.0, start_sec):.3f}",
             "-t", f"{duration:.3f}",
             "-i", str(src_path),
-            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20", "-pix_fmt", "yuv420p",
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "128k",
+            "-movflags", "+faststart",
             str(out_path),
         ]
         proc = subprocess.run(cmd, capture_output=True, text=True)
@@ -220,7 +317,6 @@ class VideoDownloader:
         headers = info.get("http_headers") or {}
         formats = info.get("formats") or []
 
-        # Check muxed MP4 <= 720p first
         muxed = [
             f for f in formats
             if f.get("url") and f.get("vcodec") not in (None, "none") and f.get("acodec") not in (None, "none")
@@ -230,18 +326,15 @@ class VideoDownloader:
             chosen = mp4_muxed[-1] if mp4_muxed else muxed[-1]
             return chosen["url"], None, chosen.get("http_headers") or headers
 
-        # Otherwise pick separate video (prefer h264/avc1 <= 720p for rapid seeking/decode) + best audio
         vid_cands = [
             f for f in formats
             if f.get("url") and f.get("vcodec") not in (None, "none") and f.get("acodec") in (None, "none")
             and (f.get("height") or 0) <= 720
             and not str(f.get("protocol", "")).startswith("m3u8")
         ]
-        # Prefer h264 over av1/vp9 for encoding speed
         h264_cands = [f for f in vid_cands if "avc" in str(f.get("vcodec", "")).lower()]
         v_list = h264_cands or vid_cands
         if not v_list:
-            # Allow m3u8/anything <=720p
             v_list = [f for f in formats if f.get("url") and f.get("vcodec") not in (None, "none") and (f.get("height") or 0) <= 720]
 
         aud_cands = [
@@ -260,93 +353,117 @@ class VideoDownloader:
 
         return None, None, headers
 
-    def _try_direct_ffmpeg_cut(self, url: str, start_sec: float, duration: float, out_path: Path) -> bool:
-        try:
-            with yt_dlp.YoutubeDL({'quiet': True, 'no_warnings': True, 'skip_download': True, 'socket_timeout': 15}) as ydl:
-                info = ydl.extract_info(url, download=False)
-            v_url, a_url, headers = self._pick_streams(info)
-            if not v_url:
-                return False
+    def _try_direct_ffmpeg_cut(self, url: str, start_sec: float, duration: float, out_path: Path) -> Tuple[bool, Optional[str]]:
+        last_err: Optional[str] = None
+        for profile in PLAYER_CLIENT_PROFILES[:4]:
+            try:
+                opts = build_ytdlp_opts(
+                    {"quiet": True, "no_warnings": True, "skip_download": True, "socket_timeout": 12},
+                    profile,
+                )
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                v_url, a_url, headers = self._pick_streams(info)
+                if not v_url:
+                    continue
 
-            header_str = "".join(f"{k}: {v}\r\n" for k, v in headers.items() if k.lower() in ("user-agent", "referer", "origin"))
-            common_in = ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5"]
-            if header_str:
-                common_in = ["-headers", header_str] + common_in
+                header_str = "".join(
+                    f"{k}: {v}\r\n" for k, v in headers.items() if k.lower() in ("user-agent", "referer", "origin", "accept", "accept-language")
+                )
+                common_in = ["-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "4"]
+                if header_str:
+                    common_in = ["-headers", header_str] + common_in
 
-            cmd = [FFMPEG_PATH, "-y"] + common_in + ["-ss", f"{max(0.0, start_sec):.3f}", "-t", f"{duration:.3f}", "-i", v_url]
-            if a_url:
-                cmd += common_in + ["-ss", f"{max(0.0, start_sec):.3f}", "-t", f"{duration:.3f}", "-i", a_url]
-                cmd += ["-map", "0:v:0", "-map", "1:a:0"]
-            else:
-                cmd += ["-map", "0:v:0", "-map", "0:a?"]
+                cmd = [FFMPEG_PATH, "-y"] + common_in + ["-ss", f"{max(0.0, start_sec):.3f}", "-t", f"{duration:.3f}", "-i", v_url]
+                if a_url:
+                    cmd += common_in + ["-ss", f"{max(0.0, start_sec):.3f}", "-t", f"{duration:.3f}", "-i", a_url]
+                    cmd += ["-map", "0:v:0", "-map", "1:a:0"]
+                else:
+                    cmd += ["-map", "0:v:0", "-map", "0:a?"]
 
-            cmd += [
-                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20", "-pix_fmt", "yuv420p",
-                "-c:a", "aac", "-b:a", "128k",
-                "-shortest",
-                str(out_path),
-            ]
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=max(60, int(duration * 3)))
-            if proc.returncode == 0 and out_path.exists() and out_path.stat().st_size > 10000:
-                return True
-            out_path.unlink(missing_ok=True)
-        except Exception:
-            out_path.unlink(missing_ok=True)
-        return False
+                cmd += [
+                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22", "-pix_fmt", "yuv420p",
+                    "-c:a", "aac", "-b:a", "128k",
+                    "-shortest",
+                    str(out_path),
+                ]
+                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=max(45, int(duration * 2.5)))
+                if proc.returncode == 0 and out_path.exists() and out_path.stat().st_size > 10000:
+                    return True, None
+                out_path.unlink(missing_ok=True)
+            except Exception as exc:
+                last_err = str(exc)
+                out_path.unlink(missing_ok=True)
+        return False, last_err
 
-    def _try_ytdlp_range_download(self, url: str, start_sec: float, end_sec: float, out_path: Path) -> bool:
-        try:
-            stem_tmpl = str(out_path.with_suffix(""))
-            ydl_opts = {
-                'format': 'bestvideo[height<=720][vcodec^=avc1]+bestaudio/bestvideo[height<=720]+bestaudio/best[height<=720]/best',
-                'ffmpeg_location': FFMPEG_PATH,
-                'download_ranges': download_range_func(None, [(max(0.0, start_sec), end_sec)]),
-                'force_keyframes_at_cuts': True,
-                'merge_output_format': 'mp4',
-                'outtmpl': f"{stem_tmpl}.%(ext)s",
-                'quiet': True,
-                'no_warnings': True,
-            }
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
+    def _try_ytdlp_range_download(self, url: str, start_sec: float, end_sec: float, out_path: Path) -> Tuple[bool, Optional[str]]:
+        last_err: Optional[str] = None
+        stem_tmpl = str(out_path.with_suffix(""))
+        for profile in PLAYER_CLIENT_PROFILES:
+            try:
+                ydl_opts = build_ytdlp_opts(
+                    {
+                        "format": "bestvideo[height<=720][vcodec^=avc1]+bestaudio/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+                        "ffmpeg_location": FFMPEG_PATH,
+                        "download_ranges": download_range_func(None, [(max(0.0, start_sec), end_sec)]),
+                        "force_keyframes_at_cuts": True,
+                        "merge_output_format": "mp4",
+                        "outtmpl": f"{stem_tmpl}.%(ext)s",
+                        "quiet": True,
+                        "no_warnings": True,
+                        "socket_timeout": 15,
+                    },
+                    profile,
+                )
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([url])
 
-            if out_path.exists() and out_path.stat().st_size > 10000:
-                return True
-            # Check alternative extension written by yt-dlp
-            for alt in out_path.parent.glob(f"{out_path.stem}.*"):
-                if alt.stat().st_size > 10000:
-                    alt.replace(out_path)
-                    return True
-        except Exception:
-            out_path.unlink(missing_ok=True)
-        return False
+                if out_path.exists() and out_path.stat().st_size > 10000:
+                    return True, None
+                for alt in out_path.parent.glob(f"{out_path.stem}.*"):
+                    if alt.stat().st_size > 10000:
+                        alt.replace(out_path)
+                        return True, None
+            except Exception as exc:
+                last_err = str(exc)
+                for leftover in out_path.parent.glob(f"{out_path.stem}.*"):
+                    leftover.unlink(missing_ok=True)
+        return False, last_err
 
-    def _download_cached_source(self, url: str, cached_src: Path) -> bool:
-        try:
-            ydl_opts = {
-                'format': 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]/best',
-                'ffmpeg_location': FFMPEG_PATH,
-                'merge_output_format': 'mp4',
-                'outtmpl': str(cached_src),
-                'quiet': True,
-                'no_warnings': True,
-            }
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
-            return cached_src.exists() and cached_src.stat().st_size > 50000
-        except Exception:
-            cached_src.unlink(missing_ok=True)
-            return False
+    def _download_cached_source(self, url: str, cached_src: Path) -> Tuple[bool, Optional[str]]:
+        last_err: Optional[str] = None
+        for profile in PLAYER_CLIENT_PROFILES[:4]:
+            try:
+                ydl_opts = build_ytdlp_opts(
+                    {
+                        "format": "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720]/best",
+                        "ffmpeg_location": FFMPEG_PATH,
+                        "merge_output_format": "mp4",
+                        "outtmpl": str(cached_src),
+                        "quiet": True,
+                        "no_warnings": True,
+                        "socket_timeout": 15,
+                    },
+                    profile,
+                )
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    ydl.download([url])
+                if cached_src.exists() and cached_src.stat().st_size > 50000:
+                    return True, None
+            except Exception as exc:
+                last_err = str(exc)
+                cached_src.unlink(missing_ok=True)
+        return False, last_err
 
     def _generate_synthetic_video(self, start_sec: float, end_sec: float, dest: Path, label: str) -> Path:
         """
         Generates a clean animated studio demo video with soft harmonic audio
-        for offline demos & tests (never blank flat gray + jarring beep).
+        for offline demos & tests.
         """
         duration = max(1.0, float(end_sec) - float(start_sec))
         vf = (
             "drawgrid=w=80:h=80:t=1:c=0x1e293b@0.45,"
-            "drawbox=x=0:y=320:w=1280:h=80:color=0x4f46e5@0.12:t=fill"
+            "drawbox=x=0:y=320:w=1280:h=80:color=0x0071e3@0.14:t=fill"
         )
         cmd = [
             FFMPEG_PATH, "-y",
@@ -361,7 +478,6 @@ class VideoDownloader:
             subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
             return dest
         except Exception:
-            # Serverless fallback: if FFmpeg generation is constrained, copy pre-packaged high-res asset
             fallback_candidates = [
                 BASE_DIR / "public" / "assets" / "sample_preview.mp4",
                 BASE_DIR / "frontend" / "dist" / "sample_preview.mp4",
@@ -397,7 +513,8 @@ class VideoDownloader:
                 max_val = float(np.max(rms)) if np.max(rms) > 1e-6 else 1.0
                 return [int(max(14, min(100, (v / max_val) * 92 + 8))) for v in rms]
             else:
-                import struct, math
+                import math
+                import struct
                 samples = struct.unpack(f"<{num_samples}h", raw[:num_samples * 2])
                 chunk_size = max(1, num_samples // num_bars)
                 rms_vals = []
@@ -412,3 +529,8 @@ class VideoDownloader:
                 return [int(max(14, min(100, (v / max_val) * 92 + 8))) for v in rms_vals]
         except Exception:
             return [35] * num_bars
+
+
+def get_demo_info_safe(clean_url: str) -> Dict[str, Any]:
+    from backend.demo_datasets import get_demo_info
+    return get_demo_info(clean_url)

@@ -9,7 +9,7 @@ if str(root_dir) not in sys.path:
 
 if __name__ == "__main__":
     print("\n=======================================================")
-    print("   ShortCut Studio -- YouTube to 9:16 Shorts Engine")
+    print("   Klipnux -- AI Video Clip & AutoCut Studio")
     print("   Running locally on: http://localhost:8000")
     print("   Open this URL in your browser to start clipping!")
     print("=======================================================\n")

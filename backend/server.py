@@ -1,29 +1,29 @@
-import os
+import base64
 import re
+import threading
 import time
 import uuid
-import shutil
 import zipfile
-import threading
 from pathlib import Path
-from typing import Optional, List, Dict, Any
-from fastapi import FastAPI, HTTPException, Request, Query
+from typing import Any, Dict, List, Optional
+
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from backend.config import OUTPUT_DIR, TEMP_DIR, UPLOADS_DIR, BASE_DIR
-from backend.downloader import VideoDownloader
-from backend.transcriber import VideoTranscriber
-from backend.highlighter import ClipHighlighter
-from backend.video_processor import VideoProcessor
 from backend.caption_templates import list_caption_templates
+from backend.config import BASE_DIR, COOKIES_PATH, IS_VERCEL, OUTPUT_DIR, TEMP_DIR, UPLOADS_DIR
+from backend.downloader import VideoDownloader
+from backend.highlighter import ClipHighlighter
+from backend.transcriber import VideoTranscriber
+from backend.video_processor import VideoProcessor
 
 app = FastAPI(
-    title="ShortCut Studio Pro — AI Long-Form to Viral Clips Engine",
-    description="Automated AutoCut engine turning long YouTube & local videos into 10-20 viral 9:16/1:1/16:9 clips.",
-    version="3.0.0",
+    title="Klipnux — AI Long-Form to Viral Clips Engine",
+    description="Automated AI clipping engine turning long YouTube & local videos into ready-to-post 9:16, 1:1, and 16:9 clips.",
+    version="3.1.0",
 )
 
 app.add_middleware(
@@ -38,7 +38,7 @@ downloader = VideoDownloader()
 transcriber = VideoTranscriber()
 processor = VideoProcessor()
 
-# In-memory background job store for live loading telemetry
+# In-memory background job store for local multi-step progress telemetry
 ANALYSIS_JOBS: Dict[str, Dict[str, Any]] = {}
 JOBS_LOCK = threading.Lock()
 
@@ -76,7 +76,8 @@ class ZipSelectionRequest(BaseModel):
 
 
 class SettingsUpdate(BaseModel):
-    api_key: str
+    api_key: Optional[str] = ""
+    cookies_txt: Optional[str] = None
 
 
 def _run_analysis_sync(
@@ -110,7 +111,7 @@ def _run_analysis_sync(
     clips = highlighter.find_highlights(segments, max_clips=max_clips)
 
     if progress_update:
-        progress_update(96, "4. Building Retention Heatmap...", f"Prepared {len(clips)} viral clips ready to render.")
+        progress_update(96, "4. Building Retention Heatmap...", f"Prepared {len(clips)} viral clips ready to cut.")
 
     return {
         "url": clean_url,
@@ -127,8 +128,10 @@ def _run_analysis_sync(
 def health_check():
     return {
         "status": "healthy",
-        "service": "ShortCut Studio Engine v3.0",
-        "version": "3.0.0",
+        "service": "Klipnux Clip Engine",
+        "version": "3.1.0",
+        "serverless": IS_VERCEL,
+        "cookies_configured": COOKIES_PATH.exists() and COOKIES_PATH.stat().st_size > 20,
         "ready": True,
     }
 
@@ -170,19 +173,41 @@ def analyze_video(req: AnalyzeRequest):
 @app.post("/api/analyze/start")
 @app.post("/analyze/start")
 def start_analyze_job(req: AnalyzeRequest):
-    """Starts async analysis job with real live progress polling via GET /api/jobs/{job_id}."""
+    """
+    Starts analysis job. On serverless runtimes (Vercel), runs inline cleanly in one request
+    so subsequent requests never 404 across cold container switches.
+    """
     if not VideoDownloader.is_valid_youtube_url(req.url.strip()):
         raise HTTPException(status_code=400, detail="Please provide a valid YouTube URL or demo/local video.")
 
     job_id = f"job_{uuid.uuid4().hex[:10]}"
     now = time.time()
+
+    if IS_VERCEL:
+        try:
+            result = _run_analysis_sync(req.url, req.target_duration, req.max_clips)
+            return {
+                "job_id": job_id,
+                "status": "completed",
+                "progress": 100,
+                "step": 4,
+                "title": "Analysis Complete",
+                "detail": f"Extracted {result['total_clips']} high-retention moments!",
+                "elapsed": round(time.time() - now, 1),
+                "result": result,
+            }
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+
     with JOBS_LOCK:
         ANALYSIS_JOBS[job_id] = {
             "job_id": job_id,
             "status": "running",
             "progress": 8,
             "step": 1,
-            "title": "Initializing AutoCut Pipeline...",
+            "title": "Initializing Klipnux Engine...",
             "detail": "Preparing video ingestion worker...",
             "started_at": now,
             "elapsed": 0.0,
@@ -211,7 +236,7 @@ def start_analyze_job(req: AnalyzeRequest):
                         "status": "completed",
                         "progress": 100,
                         "step": 4,
-                        "title": "AutoCut Analysis Complete",
+                        "title": "Klipnux Analysis Complete",
                         "detail": f"Extracted {result['total_clips']} high-retention moments!",
                         "elapsed": round(time.time() - now, 1),
                         "result": result,
@@ -245,9 +270,9 @@ def get_job_status(job_id: str):
 
 
 @app.post("/api/upload-video")
-async def upload_local_video(request: Request, filename: str = Query("studio_upload.mp4")):
-    """Accepts streamed local MP4/MOV/MKV/WEBM upload for AutoCut & Whisper transcription (zero multipart dependency)."""
-    orig_name = Path(filename).name or "studio_upload.mp4"
+async def upload_local_video(request: Request, filename: str = Query("klipnux_upload.mp4")):
+    """Accepts streamed local MP4/MOV/MKV/WEBM upload for cutting & transcription."""
+    orig_name = Path(filename).name or "klipnux_upload.mp4"
     ext = Path(orig_name).suffix.lower()
     if ext not in (".mp4", ".mov", ".mkv", ".webm", ".m4v"):
         raise HTTPException(status_code=400, detail="Unsupported video format. Upload MP4, MOV, MKV, or WEBM.")
@@ -285,7 +310,9 @@ def get_settings():
     return {
         "api_key_configured": bool(USER_API_KEY),
         "api_key_masked": masked_key,
+        "cookies_configured": COOKIES_PATH.exists() and COOKIES_PATH.stat().st_size > 20,
         "max_clip_seconds": 360,
+        "serverless": IS_VERCEL,
         "status": "ready",
     }
 
@@ -294,12 +321,32 @@ def get_settings():
 @app.post("/settings")
 def update_settings(req: SettingsUpdate):
     import backend.config as cfg
-    new_key = req.api_key.strip()
+    new_key = (req.api_key or "").strip()
+    updated_cookies = False
+
+    if req.cookies_txt is not None:
+        cookies_clean = req.cookies_txt.strip()
+        if cookies_clean:
+            COOKIES_PATH.write_text(cookies_clean + "\n", encoding="utf-8")
+            updated_cookies = True
+        else:
+            COOKIES_PATH.unlink(missing_ok=True)
+
     if new_key:
         cfg.USER_API_KEY = new_key
         cfg.ASSEMBLYAI_API_KEY = new_key
         cfg.PEXELS_API_KEY = new_key
-        return {"status": "updated", "api_key_masked": f"{new_key[:6]}...{new_key[-4:]}"}
+        return {
+            "status": "updated",
+            "api_key_masked": f"{new_key[:6]}...{new_key[-4:]}",
+            "cookies_configured": COOKIES_PATH.exists() and COOKIES_PATH.stat().st_size > 20,
+        }
+
+    if updated_cookies or req.cookies_txt is not None:
+        return {
+            "status": "updated",
+            "cookies_configured": COOKIES_PATH.exists() and COOKIES_PATH.stat().st_size > 20,
+        }
     return {"status": "unchanged"}
 
 
@@ -317,7 +364,6 @@ def generate_clip(req: GenerateClipRequest):
     source_video_path: Optional[Path] = None
 
     try:
-        # 1. Cut source segment with video & audio
         source_video_path = downloader.download_segment(
             url=req.url,
             start_sec=req.start_time,
@@ -325,7 +371,6 @@ def generate_clip(req: GenerateClipRequest):
             output_filename=source_filename,
         )
 
-        # 2. Obtain subtitle segments (use custom user-edited words if supplied)
         if req.custom_words and len(req.custom_words) > 0:
             segments = [{
                 "start": req.start_time,
@@ -336,7 +381,6 @@ def generate_clip(req: GenerateClipRequest):
         else:
             segments = transcriber.get_transcript(req.url)
 
-        # 3. Render vertical/square/landscape MP4 with burned subtitles & banner
         final_path = processor.create_short(
             input_video_path=source_video_path,
             start_time=req.start_time,
@@ -356,7 +400,7 @@ def generate_clip(req: GenerateClipRequest):
         file_size = final_path.stat().st_size
         waveform_peaks = VideoDownloader.extract_waveform_peaks(final_path, num_bars=48)
 
-        return {
+        payload: Dict[str, Any] = {
             "clip_id": clip_id,
             "filename": output_filename,
             "download_url": f"/api/clips/{output_filename}",
@@ -369,6 +413,12 @@ def generate_clip(req: GenerateClipRequest):
             "size_mb": round(file_size / (1024 * 1024), 2),
             "waveform": waveform_peaks,
         }
+
+        # Serverless cross-container safety: embed small MP4 payload on Vercel so cold container switches never 404
+        if IS_VERCEL and file_size <= 2_400_000:
+            payload["inline_mp4_base64"] = base64.b64encode(final_path.read_bytes()).decode("ascii")
+
+        return payload
     except HTTPException:
         raise
     except FileNotFoundError as exc:
@@ -376,7 +426,6 @@ def generate_clip(req: GenerateClipRequest):
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Clip render failed: {exc}")
     finally:
-        # Clean up temporary intermediate cut file safely so storage/temp never leaks
         if source_video_path and source_video_path.exists():
             _safe_unlink(source_video_path)
 
@@ -421,7 +470,7 @@ def download_all_zip():
     if not mp4_files:
         raise HTTPException(status_code=404, detail="No rendered clips available to download.")
 
-    zip_path = TEMP_DIR / f"shortcut_all_{uuid.uuid4().hex[:6]}.zip"
+    zip_path = TEMP_DIR / f"klipnux_all_{uuid.uuid4().hex[:6]}.zip"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
         for f in mp4_files:
             zipf.write(f, arcname=f.name)
@@ -429,8 +478,8 @@ def download_all_zip():
     return FileResponse(
         path=zip_path,
         media_type="application/zip",
-        filename="shortcut_viral_shorts_pack.zip",
-        headers={"Content-Disposition": 'attachment; filename="shortcut_viral_shorts_pack.zip"'},
+        filename="klipnux_viral_shorts_pack.zip",
+        headers={"Content-Disposition": 'attachment; filename="klipnux_viral_shorts_pack.zip"'},
     )
 
 
@@ -446,7 +495,7 @@ def download_selected_zip(req: ZipSelectionRequest):
     if not mp4_files:
         raise HTTPException(status_code=404, detail="No rendered clips selected or found.")
 
-    zip_path = TEMP_DIR / f"shortcut_pack_{uuid.uuid4().hex[:6]}.zip"
+    zip_path = TEMP_DIR / f"klipnux_pack_{uuid.uuid4().hex[:6]}.zip"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
         for f in mp4_files:
             zipf.write(f, arcname=f.name)
@@ -454,8 +503,8 @@ def download_selected_zip(req: ZipSelectionRequest):
     return FileResponse(
         path=zip_path,
         media_type="application/zip",
-        filename="shortcut_viral_shorts_pack.zip",
-        headers={"Content-Disposition": 'attachment; filename="shortcut_viral_shorts_pack.zip"'},
+        filename="klipnux_viral_shorts_pack.zip",
+        headers={"Content-Disposition": 'attachment; filename="klipnux_viral_shorts_pack.zip"'},
     )
 
 
@@ -504,7 +553,7 @@ def clear_storage():
     locked = 0
     for folder in (OUTPUT_DIR, TEMP_DIR, UPLOADS_DIR):
         for p in folder.glob("*"):
-            if p.is_file():
+            if p.is_file() and p != COOKIES_PATH:
                 if _safe_unlink(p):
                     count += 1
                 else:

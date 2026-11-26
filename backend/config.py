@@ -1,5 +1,4 @@
 import os
-import re
 from pathlib import Path
 import imageio_ffmpeg
 
@@ -37,6 +36,7 @@ OUTPUT_DIR = STORAGE_BASE / "clips"
 TEMP_DIR = STORAGE_BASE / "temp"
 UPLOADS_DIR = STORAGE_BASE / "uploads"
 FONTS_DIR = BASE_DIR / "backend" / "fonts"
+COOKIES_PATH = TEMP_DIR / "youtube_cookies.txt"
 
 for p in (OUTPUT_DIR, TEMP_DIR, UPLOADS_DIR):
     try:
@@ -48,6 +48,14 @@ try:
     FONTS_DIR.mkdir(parents=True, exist_ok=True)
 except Exception:
     pass
+
+# Seed cookies file from environment variable if supplied in cloud settings
+_env_cookies = os.getenv("YOUTUBE_COOKIES_TXT", "").strip()
+if _env_cookies and not COOKIES_PATH.exists():
+    try:
+        COOKIES_PATH.write_text(_env_cookies, encoding="utf-8")
+    except Exception:
+        pass
 
 # FFmpeg binary
 try:

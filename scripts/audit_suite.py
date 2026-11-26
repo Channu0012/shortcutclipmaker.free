@@ -13,7 +13,7 @@ from backend.server import app, OUTPUT_DIR, TEMP_DIR
 client = TestClient(app)
 
 print("=" * 60)
-print("  SHORTCUT STUDIO PRO -- COMPREHENSIVE PRODUCTION AUDIT")
+print("  KLIPNUX STUDIO -- COMPREHENSIVE PRODUCTION AUDIT")
 print("=" * 60)
 
 passed = 0
@@ -34,7 +34,7 @@ test("API Health 200 OK", r.status_code == 200 and r.json().get("status") == "he
 
 # 2. Frontend assets
 r_html = client.get("/")
-test("Frontend index.html 200 OK", r_html.status_code == 200 and "SHORTCUT" in r_html.text)
+test("Frontend index.html 200 OK", r_html.status_code == 200 and "Klipnux" in r_html.text)
 test("Frontend index.html has no emojis", not re.search(r'[\U0001F300-\U0001FAFF\U00002600-\U000027BF\U0001F600-\U0001F64F\U0001F900-\U0001F9FF]', r_html.text))
 
 r_js = client.get("/app.js")

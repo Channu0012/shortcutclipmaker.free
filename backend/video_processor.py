@@ -1,11 +1,11 @@
-import os
 import re
 import shutil
 import subprocess
 from pathlib import Path
-from typing import List, Dict, Any, Optional
-from backend.config import FFMPEG_PATH, OUTPUT_DIR, TEMP_DIR, FONTS_DIR, BASE_DIR
+from typing import Any, Dict, List, Optional
+
 from backend.caption_templates import get_caption_template
+from backend.config import BASE_DIR, FFMPEG_PATH, FONTS_DIR, IS_VERCEL, OUTPUT_DIR, TEMP_DIR
 
 
 def hex_to_ass(hex_val: Optional[str], fallback: str = "#FFFFFF") -> str:
@@ -60,6 +60,30 @@ class VideoProcessor:
             return 1920, 1080
         return 1080, 1920
 
+    @staticmethod
+    def _build_layout_prefix(layout_style: str) -> str:
+        if layout_style == "square_1_1":
+            return (
+                "[0:v]scale=108:108:force_original_aspect_ratio=increase,crop=108:108,boxblur=8:1,scale=1080:1080:flags=bilinear,setsar=1[bg];"
+                "[0:v]scale=1080:-2,setsar=1[fg];"
+                "[bg][fg]overlay=0:(H-h)/2[v0]"
+            )
+        if layout_style == "landscape_16_9":
+            return "[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1[v0]"
+        if layout_style == "center_crop":
+            return "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1[v0]"
+        if layout_style == "split_screen":
+            return (
+                "[0:v]scale=1080:960:force_original_aspect_ratio=increase,crop=1080:960,setsar=1[top];"
+                "[0:v]scale=1080:960:force_original_aspect_ratio=increase,crop=1080:960,setsar=1[bottom];"
+                "[top][bottom]vstack=inputs=2[v0]"
+            )
+        return (
+            "[0:v]scale=108:192:force_original_aspect_ratio=increase,crop=108:192,boxblur=8:1,scale=1080:1920:flags=bilinear,setsar=1[bg];"
+            "[0:v]scale=1080:-2,setsar=1[fg];"
+            "[bg][fg]overlay=0:(H-h)/2[v0]"
+        )
+
     def create_short(
         self,
         input_video_path: Path,
@@ -85,7 +109,6 @@ class VideoProcessor:
         seek_sec = 0.0 if input_is_trimmed else start_time
         play_w, play_h = self._target_dimensions(layout_style)
 
-        # 1. Generate aspect-accurate ASS subtitle file
         self._generate_ass(
             segments=segments,
             clip_start=start_time,
@@ -98,42 +121,15 @@ class VideoProcessor:
             show_hook_banner=show_hook_banner,
         )
 
-        # 2. Escape paths safely for FFmpeg libass filter on Windows
         ass_filter_path = str(ass_path.resolve()).replace("\\", "/").replace(":", "\\:")
         fonts_filter_dir = str(FONTS_DIR.resolve()).replace("\\", "/").replace(":", "\\:")
         ass_filter = f"ass='{ass_filter_path}':fontsdir='{fonts_filter_dir}'"
 
-        if layout_style == "square_1_1":
-            filter_complex = (
-                f"[0:v]scale=108:108:force_original_aspect_ratio=increase,crop=108:108,boxblur=8:1,scale=1080:1080:flags=bilinear,setsar=1[bg];"
-                f"[0:v]scale=1080:-2,setsar=1[fg];"
-                f"[bg][fg]overlay=0:(H-h)/2[v0];"
-                f"[v0]{ass_filter}[outv]"
-            )
-        elif layout_style == "landscape_16_9":
-            filter_complex = (
-                f"[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1[v0];"
-                f"[v0]{ass_filter}[outv]"
-            )
-        elif layout_style == "center_crop":
-            filter_complex = (
-                f"[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,setsar=1[v0];"
-                f"[v0]{ass_filter}[outv]"
-            )
-        elif layout_style == "split_screen":
-            filter_complex = (
-                f"[0:v]scale=1080:960:force_original_aspect_ratio=increase,crop=1080:960,setsar=1[top];"
-                f"[0:v]scale=1080:960:force_original_aspect_ratio=increase,crop=1080:960,setsar=1[bottom];"
-                f"[top][bottom]vstack=inputs=2[v0];"
-                f"[v0]{ass_filter}[outv]"
-            )
-        else:  # "blur_margins"
-            filter_complex = (
-                f"[0:v]scale=108:192:force_original_aspect_ratio=increase,crop=108:192,boxblur=8:1,scale=1080:1920:flags=bilinear,setsar=1[bg];"
-                f"[0:v]scale=1080:-2,setsar=1[fg];"
-                f"[bg][fg]overlay=0:(H-h)/2[v0];"
-                f"[v0]{ass_filter}[outv]"
-            )
+        layout_prefix = self._build_layout_prefix(layout_style)
+        filter_complex = f"{layout_prefix};[v0]{ass_filter}[outv]"
+
+        preset = "ultrafast" if IS_VERCEL else "superfast"
+        crf = "25" if IS_VERCEL else "22"
 
         cmd = [
             FFMPEG_PATH, "-y",
@@ -144,8 +140,8 @@ class VideoProcessor:
             "-map", "[outv]",
             "-map", "0:a?",
             "-c:v", "libx264",
-            "-preset", "superfast",
-            "-crf", "22",
+            "-preset", preset,
+            "-crf", crf,
             "-pix_fmt", "yuv420p",
             "-c:a", "aac",
             "-b:a", "128k",
@@ -158,15 +154,20 @@ class VideoProcessor:
             self._render_fallback_short(input_video_path, seek_sec, duration, output_path, hook_title, layout_style)
 
         if not output_path.exists() or output_path.stat().st_size < 1000:
-            fallback_candidates = [
-                BASE_DIR / "public" / "assets" / "sample_preview.mp4",
-                BASE_DIR / "frontend" / "dist" / "sample_preview.mp4",
-                input_video_path,
-            ]
-            for cand in fallback_candidates:
-                if cand and cand.exists() and cand.stat().st_size > 10000:
-                    shutil.copyfile(cand, output_path)
-                    break
+            self._render_clean_reframe(input_video_path, seek_sec, duration, output_path, layout_style)
+
+        # Preserve authentic cut input video ahead of generic preview fallback
+        if not output_path.exists() or output_path.stat().st_size < 1000:
+            if input_video_path and input_video_path.exists() and input_video_path.stat().st_size > 1000:
+                shutil.copyfile(input_video_path, output_path)
+            else:
+                for cand in (
+                    BASE_DIR / "public" / "assets" / "sample_preview.mp4",
+                    BASE_DIR / "frontend" / "dist" / "sample_preview.mp4",
+                ):
+                    if cand.exists() and cand.stat().st_size > 10000:
+                        shutil.copyfile(cand, output_path)
+                        break
 
         return output_path
 
@@ -179,24 +180,14 @@ class VideoProcessor:
         hook: str,
         layout_style: str = "blur_margins",
     ):
-        """Aspect-aware fallback renderer if ASS subtitle plugin fails."""
+        """Aspect-aware fallback renderer using drawtext if ASS plugin fails."""
         play_w, play_h = self._target_dimensions(layout_style)
         clean_hook = strip_ass_unsupported_glyphs(hook).replace("'", "").replace(":", "")[:35]
-
-        if layout_style == "landscape_16_9":
-            scale_expr = f"[0:v]scale={play_w}:{play_h}:force_original_aspect_ratio=decrease,pad={play_w}:{play_h}:(ow-iw)/2:(oh-ih)/2,setsar=1[v0]"
-        else:
-            bg_w, bg_h = max(64, play_w // 10), max(64, play_h // 10)
-            scale_expr = (
-                f"[0:v]scale={bg_w}:{bg_h}:force_original_aspect_ratio=increase,crop={bg_w}:{bg_h},boxblur=8:1,"
-                f"scale={play_w}:{play_h}:flags=bilinear,setsar=1[bg];"
-                f"[0:v]scale={play_w}:-2,setsar=1[fg];"
-                f"[bg][fg]overlay=0:(H-h)/2[v0]"
-            )
+        scale_expr = self._build_layout_prefix(layout_style)
 
         filter_complex = (
             f"{scale_expr};"
-            f"[v0]drawtext=text='{clean_hook}':fontcolor=yellow:fontsize=44:x=(w-text_w)/2:y={int(play_h * 0.1)}[outv]"
+            f"[v0]drawtext=text='{clean_hook}':fontcolor=white:fontsize=42:x=(w-text_w)/2:y={int(play_h * 0.1)}[outv]"
         )
         cmd = [
             FFMPEG_PATH, "-y",
@@ -208,6 +199,35 @@ class VideoProcessor:
             "-map", "0:a?",
             "-c:v", "libx264",
             "-preset", "ultrafast",
+            "-crf", "24",
+            "-pix_fmt", "yuv420p",
+            "-c:a", "aac",
+            "-movflags", "+faststart",
+            str(output),
+        ]
+        subprocess.run(cmd, capture_output=True, text=True)
+
+    def _render_clean_reframe(
+        self,
+        input_video: Path,
+        start: float,
+        duration: float,
+        output: Path,
+        layout_style: str = "blur_margins",
+    ):
+        """Pure geometric reframe without font/libass dependencies if drawtext also fails."""
+        scale_expr = self._build_layout_prefix(layout_style)
+        cmd = [
+            FFMPEG_PATH, "-y",
+            "-ss", f"{start:.2f}",
+            "-t", f"{duration:.2f}",
+            "-i", str(input_video),
+            "-filter_complex", scale_expr,
+            "-map", "[v0]",
+            "-map", "0:a?",
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-crf", "24",
             "-pix_fmt", "yuv420p",
             "-c:a", "aac",
             "-movflags", "+faststart",
@@ -237,7 +257,6 @@ class VideoProcessor:
 
         font_name = tpl.get("font_family", "THEBOLDFONT")
         base_font_size = int(tpl.get("font_size", 48))
-        # Scale font size proportionally for 1:1 and 16:9 frames
         if play_h == 1080 and play_w == 1080:
             font_size = int(base_font_size * 0.85)
             pos_y_frac = 0.80
@@ -279,7 +298,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         dialogues: List[str] = []
         total_dur = max(0.5, clip_end - clip_start)
 
-        # 1. Top Hook Banner (wrapped cleanly across 1-2 lines, emoji-safe)
         if show_hook_banner and hook_title:
             banner_dur = min(4.5, total_dur)
             banner_end_str = self._format_ass_time(banner_dur)
@@ -292,7 +310,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     f"Dialogue: 1,0:00:00.00,{banner_end_str},HookBanner,,0,0,0,,{{\\fad(160,220)}}{wrapped_banner}"
                 )
 
-        # 2. Word-by-word karaoke subtitles (filter out words strictly outside clip bounds FIRST)
         glow_tag = "\\blur4" if is_glow else ""
         active_words_stream: List[Dict[str, Any]] = []
 
@@ -329,7 +346,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                             "end": clip_start + rel_start + (i_t + 1) * step,
                         })
 
-        # Chunk continuous stream cleanly into punchy bursts
         for k in range(0, len(active_words_stream), max_words):
             group = active_words_stream[k:k + max_words]
             chunk_end = min(total_dur, group[-1]["end"] - clip_start)

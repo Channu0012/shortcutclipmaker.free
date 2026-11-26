@@ -1,4 +1,4 @@
-// ShortCut Studio Pro v3.0 — Production AutoCut Studio Frontend Controller
+// Klipnux Studio — Apple-Crafted Frontend Controller
 document.addEventListener("DOMContentLoaded", () => {
   const refreshIcons = () => {
     if (window.lucide) window.lucide.createIcons();
@@ -26,12 +26,12 @@ document.addEventListener("DOMContentLoaded", () => {
     return API_BASE;
   }
 
-  // Studio Application State
+  // Application State
   let currentVideoUrl = "";
   let currentVideoInfo = null;
   let currentClips = [];
   let filteredClips = [];
-  let renderedClipsMap = {}; // { [clipId]: { ...serverClipData, signature } }
+  let renderedClipsMap = {}; // { [clipId]: { ...serverClipData, signature, blob_url } }
   let selectedClipIds = new Set();
   let activeClip = null;
   let activeCategory = "all";
@@ -42,6 +42,8 @@ document.addEventListener("DOMContentLoaded", () => {
   let activePollTimer = null;
   let elapsedTimerInterval = null;
   let renderTimerInterval = null;
+  let currentWizardStep = 1;
+  let activeSourceMode = "youtube"; // "youtube" | "upload"
   const speedSteps = [1, 1.25, 1.5, 2];
   let speedIdx = 0;
 
@@ -55,6 +57,24 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnLogoHome = document.getElementById("btnLogoHome");
   const btnNewProject = document.getElementById("btnNewProject");
 
+  // Wizard Step Controls
+  const wizardStep1 = document.getElementById("wizardStep1");
+  const wizardStep2 = document.getElementById("wizardStep2");
+  const wizPill1 = document.getElementById("wizPill1");
+  const wizPill2 = document.getElementById("wizPill2");
+  const wizPill3 = document.getElementById("wizPill3");
+  const btnWizardNext = document.getElementById("btnWizardNext");
+  const btnWizardBack = document.getElementById("btnWizardBack");
+  const step2SourceSummary = document.getElementById("step2SourceSummary");
+  const urlStatusHint = document.getElementById("urlStatusHint");
+  const clipsCountPills = document.querySelectorAll("#clipsCountPills .kn-count-pill");
+
+  // Mobile Workspace Switcher
+  const mobileTabBtns = document.querySelectorAll(".mobile-tab-btn");
+  const paneClips = document.getElementById("paneClips");
+  const panePreview = document.getElementById("panePreview");
+  const paneInspector = document.getElementById("paneInspector");
+
   // Header & Settings Controls
   const btnApiSettings = document.getElementById("btnApiSettings");
   const apiKeyDisplay = document.getElementById("apiKeyDisplay");
@@ -66,6 +86,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnCancelSettings = document.getElementById("btnCancelSettings");
   const btnSaveSettings = document.getElementById("btnSaveSettings");
   const inputSettingsApiKey = document.getElementById("inputSettingsApiKey");
+  const inputSettingsCookies = document.getElementById("inputSettingsCookies");
+  const cookiesStatusHint = document.getElementById("cookiesStatusHint");
 
   // Launcher Controls
   const tabSourceYoutube = document.getElementById("tabSourceYoutube");
@@ -134,6 +156,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnStageRender = document.getElementById("btnStageRender");
   const stageRenderingOverlay = document.getElementById("stageRenderingOverlay");
   const stageRenderTimer = document.getElementById("stageRenderTimer");
+  const stageErrorOverlay = document.getElementById("stageErrorOverlay");
+  const stageErrorMessage = document.getElementById("stageErrorMessage");
+  const btnRetryStageCut = document.getElementById("btnRetryStageCut");
+  const btnStageSwitchUpload = document.getElementById("btnStageSwitchUpload");
+  const btnStageOpenCookies = document.getElementById("btnStageOpenCookies");
   const waveformContainer = document.getElementById("waveformContainer");
   const waveformTimecode = document.getElementById("waveformTimecode");
   const btnDownloadClip = document.getElementById("btnDownloadClip");
@@ -168,25 +195,25 @@ document.addEventListener("DOMContentLoaded", () => {
   let toastTimeout = null;
 
   // =========================================================
-  // HELPERS & VIEW ROUTER
+  // HELPERS, WIZARD NAVIGATION & VIEW ROUTER
   // =========================================================
   function showToast(message, isError = false) {
     toastMessage.textContent = message;
     if (isError) {
-      toastBox.className = "bg-surface-900 border border-rose-500/40 text-rose-100 px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2 text-xs font-semibold";
+      toastBox.style.borderColor = "rgba(220, 38, 38, 0.35)";
       toastIcon.setAttribute("data-lucide", "alert-circle");
-      toastIcon.className = "w-4 h-4 text-rose-400";
+      toastIcon.style.color = "var(--danger)";
     } else {
-      toastBox.className = "bg-surface-900 border border-brand-500/40 text-white px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2 text-xs font-semibold";
+      toastBox.style.borderColor = "rgba(0, 0, 0, 0.08)";
       toastIcon.setAttribute("data-lucide", "check-circle");
-      toastIcon.className = "w-4 h-4 text-emerald-400";
+      toastIcon.style.color = "var(--success)";
     }
     refreshIcons();
-    toast.classList.remove("translate-y-16", "opacity-0", "pointer-events-none");
+    toast.classList.remove("toast-hidden");
     clearTimeout(toastTimeout);
     toastTimeout = setTimeout(() => {
-      toast.classList.add("translate-y-16", "opacity-0", "pointer-events-none");
-    }, 3400);
+      toast.classList.add("toast-hidden");
+    }, 3600);
   }
 
   function formatTime(seconds) {
@@ -207,6 +234,63 @@ document.addEventListener("DOMContentLoaded", () => {
     return 0;
   }
 
+  function extractYouTubeId(url) {
+    if (!url) return null;
+    const s = url.trim();
+    if (s.startsWith("demo://") || s.startsWith("local://")) return s;
+    const m = s.match(/(?:v=|youtu\.be\/|youtube\.com\/(?:shorts|live|embed)\/)([0-9A-Za-z_-]{11})/);
+    return m ? m[1] : null;
+  }
+
+  function validateSourceInline() {
+    if (!urlInput || !urlStatusHint) return true;
+    const val = urlInput.value.trim();
+    if (!val) {
+      urlStatusHint.textContent = "Paste any YouTube URL or try Instant Studio Demo";
+      urlStatusHint.style.color = "var(--text-secondary)";
+      return false;
+    }
+    if (extractYouTubeId(val)) {
+      urlStatusHint.textContent = val.startsWith("local://") ? "Uploaded video ready" : "Valid video link ready";
+      urlStatusHint.style.color = "var(--success)";
+      return true;
+    }
+    urlStatusHint.textContent = "Enter a valid youtube.com or youtu.be URL";
+    urlStatusHint.style.color = "var(--warning)";
+    return false;
+  }
+
+  function setWizardStep(step, direction = "next") {
+    currentWizardStep = step;
+    if (!wizardStep1 || !wizardStep2) return;
+
+    wizardStep1.classList.remove("animate-step-next", "animate-step-back");
+    wizardStep2.classList.remove("animate-step-next", "animate-step-back");
+
+    if (step === 1) {
+      wizardStep1.classList.remove("hidden");
+      wizardStep2.classList.add("hidden");
+      wizardStep1.classList.add(direction === "back" ? "animate-step-back" : "animate-step-next");
+      if (wizPill1) wizPill1.className = "kn-wiz-step active";
+      if (wizPill2) wizPill2.className = "kn-wiz-step";
+      if (wizPill3) wizPill3.className = "kn-wiz-step";
+    } else if (step === 2) {
+      const val = urlInput ? urlInput.value.trim() : "";
+      if (step2SourceSummary) {
+        step2SourceSummary.textContent = val.startsWith("local://")
+          ? `Uploaded file: ${val.replace("local://", "")}`
+          : val;
+      }
+      wizardStep1.classList.add("hidden");
+      wizardStep2.classList.remove("hidden");
+      wizardStep2.classList.add("animate-step-next");
+      if (wizPill1) wizPill1.className = "kn-wiz-step done";
+      if (wizPill2) wizPill2.className = "kn-wiz-step active";
+      if (wizPill3) wizPill3.className = "kn-wiz-step";
+    }
+    refreshIcons();
+  }
+
   function showView(viewName) {
     launcherView.classList.add("hidden");
     processingSection.classList.add("hidden");
@@ -216,19 +300,78 @@ document.addEventListener("DOMContentLoaded", () => {
       launcherView.classList.remove("hidden");
       headerProjectMeta.classList.add("hidden");
       btnNewProject.classList.add("hidden");
-      btnNewProject.classList.remove("flex");
+      setWizardStep(1, "back");
       refreshStorageAndLibrary();
     } else if (viewName === "processing") {
       processingSection.classList.remove("hidden");
       headerProjectMeta.classList.add("hidden");
       btnNewProject.classList.add("hidden");
+      if (wizPill2) wizPill2.className = "kn-wiz-step done";
+      if (wizPill3) wizPill3.className = "kn-wiz-step active";
     } else if (viewName === "workspace") {
       resultsSection.classList.remove("hidden");
       headerProjectMeta.classList.remove("hidden");
-      headerProjectMeta.classList.add("flex");
+      headerProjectMeta.style.display = "flex";
       btnNewProject.classList.remove("hidden");
-      btnNewProject.classList.add("flex");
+      setMobilePane("preview");
     }
+    refreshIcons();
+  }
+
+  function setMobilePane(pane) {
+    mobileTabBtns.forEach((btn) => {
+      btn.classList.toggle("active", btn.dataset.pane === pane);
+    });
+    if (paneClips) paneClips.classList.toggle("mobile-pane-hidden", pane !== "clips");
+    if (panePreview) panePreview.classList.toggle("mobile-pane-hidden", pane !== "preview");
+    if (paneInspector) paneInspector.classList.toggle("mobile-pane-hidden", pane !== "inspector");
+  }
+
+  mobileTabBtns.forEach((btn) => {
+    btn.addEventListener("click", () => setMobilePane(btn.dataset.pane));
+  });
+
+  function syncClipsCountPills(val) {
+    const strVal = String(val);
+    if (clipsCountSelect) clipsCountSelect.value = strVal;
+    clipsCountPills.forEach((p) => {
+      const isMatch = p.dataset.count === strVal;
+      p.classList.toggle("active", isMatch);
+      const sub = p.querySelector("span");
+      if (sub) {
+        sub.style.color = isMatch ? "var(--accent)" : "var(--text-secondary)";
+        sub.style.fontWeight = isMatch ? "600" : "400";
+      }
+    });
+  }
+
+  clipsCountPills.forEach((p) => {
+    p.addEventListener("click", () => syncClipsCountPills(p.dataset.count));
+  });
+  if (clipsCountSelect) {
+    clipsCountSelect.addEventListener("change", () => syncClipsCountPills(clipsCountSelect.value));
+  }
+
+  if (btnWizardNext) {
+    btnWizardNext.addEventListener("click", () => {
+      if (activeSourceMode === "upload" && (!urlInput.value || !urlInput.value.startsWith("local://"))) {
+        return showToast("Please choose or drop an MP4/MOV/WEBM video file first", true);
+      }
+      if (!validateSourceInline()) {
+        urlInput.focus();
+        return showToast("Enter a valid YouTube link or try Instant Studio Demo", true);
+      }
+      setWizardStep(2, "next");
+    });
+  }
+
+  if (btnWizardBack) {
+    btnWizardBack.addEventListener("click", () => setWizardStep(1, "back"));
+  }
+
+  if (urlInput) {
+    urlInput.addEventListener("input", validateSourceInline);
+    validateSourceInline();
   }
 
   function getActiveWords(clip) {
@@ -255,6 +398,19 @@ document.addEventListener("DOMContentLoaded", () => {
     return `${Number(clip.start_time).toFixed(2)}|${Number(clip.end_time).toFixed(2)}|${clip.hook_title}|${layout}|${caption}|${bannerOn}|${wordsSig}`;
   }
 
+  function decodeInlineMp4ToBlobUrl(b64) {
+    try {
+      const bin = atob(b64);
+      const len = bin.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+      const blob = new Blob([bytes], { type: "video/mp4" });
+      return URL.createObjectURL(blob);
+    } catch (_) {
+      return null;
+    }
+  }
+
   // =========================================================
   // SERVER SETTINGS, STORAGE STATS & EXISTING LIBRARY
   // =========================================================
@@ -263,8 +419,14 @@ document.addEventListener("DOMContentLoaded", () => {
       const res = await fetch(`${API_BASE}/api/settings`);
       if (res.ok) {
         const data = await res.json();
-        if (apiKeyDisplay && data.api_key_masked) {
-          apiKeyDisplay.textContent = `API: ${data.api_key_masked}`;
+        if (apiKeyDisplay) {
+          apiKeyDisplay.textContent = data.cookies_configured ? "Cookies Ready" : "Settings";
+        }
+        if (cookiesStatusHint) {
+          cookiesStatusHint.textContent = data.cookies_configured
+            ? "YouTube cookies configured on server"
+            : "Not set - optional for cloud deployments";
+          cookiesStatusHint.style.color = data.cookies_configured ? "var(--success)" : "var(--text-secondary)";
         }
       }
     } catch (_) {}
@@ -279,7 +441,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (statsRes.ok) {
         const stats = await statsRes.json();
         if (storageStatsLabel) {
-          storageStatsLabel.textContent = `${stats.clips_count} clips · ${stats.clips_mb} MB`;
+          storageStatsLabel.textContent = `${stats.clips_count} clips`;
         }
       }
       if (clipsRes.ok) {
@@ -300,16 +462,17 @@ document.addEventListener("DOMContentLoaded", () => {
     libraryGrid.innerHTML = "";
     files.slice(0, 9).forEach((f) => {
       const item = document.createElement("div");
-      item.className = "bg-surface-950 border border-white/[0.07] rounded-xl p-3 flex items-center justify-between gap-2";
+      item.className = "kn-subcard";
+      item.style.cssText = "padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px;";
       item.innerHTML = `
-        <div class="min-w-0">
-          <div class="text-xs font-mono font-semibold text-slate-200 truncate">${f.filename}</div>
-          <div class="text-[10px] font-mono text-slate-500">${f.size_mb} MB · Ready MP4</div>
+        <div style="min-width: 0;">
+          <div style="font-size: 12px; font-weight: 700; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${f.filename}</div>
+          <div class="kn-tabular" style="font-size: 11px; color: var(--text-secondary);">${f.size_mb} MB &middot; MP4</div>
         </div>
-        <div class="flex items-center gap-1 shrink-0">
-          <a href="${f.download_url}" download="${f.filename}" class="studio-pressable px-2.5 py-1 rounded-lg bg-brand-600/20 hover:bg-brand-600 text-brand-300 hover:text-white text-[11px] font-semibold">Download</a>
-          <button type="button" class="btn-del-lib-clip studio-pressable p-1 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-950/40" data-filename="${f.filename}" title="Delete file">
-            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+        <div style="display: flex; align-items: center; gap: 5px; flex-shrink: 0;">
+          <a href="${f.download_url}" download="${f.filename}" class="kn-pressable kn-icon-btn" style="min-height: 30px; padding: 4px 10px; font-size: 11.5px; color: var(--accent); text-decoration: none;">Download</a>
+          <button type="button" class="btn-del-lib-clip kn-pressable" style="min-height: 28px; width: 28px; border: none; border-radius: 8px; background: transparent; color: var(--text-tertiary); display: inline-flex; align-items: center; justify-content: center;" data-filename="${f.filename}" title="Delete file">
+            <i data-lucide="x" style="width: 14px; height: 14px;"></i>
           </button>
         </div>
       `;
@@ -326,7 +489,6 @@ document.addEventListener("DOMContentLoaded", () => {
   if (btnClearStorage) {
     btnClearStorage.addEventListener("click", async () => {
       try {
-        // Release open MP4 handle in Chrome before asking server to delete file on Windows
         if (previewVideo) {
           previewVideo.pause();
           previewVideo.removeAttribute("src");
@@ -338,7 +500,7 @@ document.addEventListener("DOMContentLoaded", () => {
           renderedClipsMap = {};
           if (activeClip) selectClip(activeClip);
           await refreshStorageAndLibrary();
-          showToast(d.message || "Wiped all rendered clips & temporary storage");
+          showToast(d.message || "Cleared rendered clips and temporary cache");
         }
       } catch (_) {
         showToast("Unable to clear storage", true);
@@ -346,52 +508,76 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Modal Settings
+  // Settings Modal
   if (btnApiSettings) {
     btnApiSettings.addEventListener("click", () => {
       settingsModal.classList.remove("hidden");
+      refreshIcons();
     });
   }
   [btnCloseSettings, btnCancelSettings].forEach((btn) => {
     if (btn) btn.addEventListener("click", () => settingsModal.classList.add("hidden"));
   });
+  if (settingsModal) {
+    settingsModal.addEventListener("click", (e) => {
+      if (e.target === settingsModal) settingsModal.classList.add("hidden");
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !settingsModal.classList.contains("hidden")) {
+        settingsModal.classList.add("hidden");
+      }
+    });
+  }
   if (btnSaveSettings) {
     btnSaveSettings.addEventListener("click", async () => {
-      const val = (inputSettingsApiKey.value || "").trim();
-      if (!val) return showToast("Enter a valid API key", true);
+      const apiKeyVal = (inputSettingsApiKey.value || "").trim();
+      const cookiesVal = inputSettingsCookies ? inputSettingsCookies.value : null;
+      const bodyPayload = {};
+      if (apiKeyVal) bodyPayload.api_key = apiKeyVal;
+      if (cookiesVal !== null && cookiesVal.trim().length > 0) bodyPayload.cookies_txt = cookiesVal.trim();
+
+      if (!bodyPayload.api_key && !bodyPayload.cookies_txt) {
+        return showToast("Enter an API key or paste YouTube cookies", true);
+      }
       const res = await fetch(`${API_BASE}/api/settings`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ api_key: val }),
+        body: JSON.stringify(bodyPayload),
       });
       if (res.ok) {
-        const d = await res.json();
-        if (apiKeyDisplay && d.api_key_masked) apiKeyDisplay.textContent = `API: ${d.api_key_masked}`;
         settingsModal.classList.add("hidden");
-        showToast("API key updated cleanly");
+        await loadServerSettings();
+        showToast("Klipnux settings saved");
+      } else {
+        showToast("Failed to save settings", true);
       }
     });
   }
 
   // =========================================================
-  // LAUNCHER EVENTS: SOURCE TABS, UPLOAD, SWATCHES, PRESETS
+  // SOURCE TABS, LOCAL UPLOAD, CAPTION SWATCHES & PRESETS
   // =========================================================
   if (btnLogoHome) btnLogoHome.addEventListener("click", () => showView("launcher"));
   if (btnNewProject) btnNewProject.addEventListener("click", () => showView("launcher"));
 
-  if (tabSourceYoutube && tabSourceUpload) {
-    tabSourceYoutube.addEventListener("click", () => {
+  function activateSourceTab(mode) {
+    activeSourceMode = mode;
+    if (mode === "youtube") {
       youtubeSourcePanel.classList.remove("hidden");
       uploadSourcePanel.classList.add("hidden");
-      tabSourceYoutube.className = "source-tab-btn px-3.5 py-1.5 rounded-lg bg-brand-600 text-white text-xs font-semibold flex items-center gap-1.5 studio-pressable";
-      tabSourceUpload.className = "source-tab-btn px-3.5 py-1.5 rounded-lg text-slate-400 hover:text-white text-xs font-semibold flex items-center gap-1.5 studio-pressable";
-    });
-    tabSourceUpload.addEventListener("click", () => {
+      tabSourceYoutube.classList.add("active");
+      tabSourceUpload.classList.remove("active");
+    } else {
       uploadSourcePanel.classList.remove("hidden");
       youtubeSourcePanel.classList.add("hidden");
-      tabSourceUpload.className = "source-tab-btn px-3.5 py-1.5 rounded-lg bg-brand-600 text-white text-xs font-semibold flex items-center gap-1.5 studio-pressable";
-      tabSourceYoutube.className = "source-tab-btn px-3.5 py-1.5 rounded-lg text-slate-400 hover:text-white text-xs font-semibold flex items-center gap-1.5 studio-pressable";
-    });
+      tabSourceUpload.classList.add("active");
+      tabSourceYoutube.classList.remove("active");
+    }
+  }
+
+  if (tabSourceYoutube && tabSourceUpload) {
+    tabSourceYoutube.addEventListener("click", () => activateSourceTab("youtube"));
+    tabSourceUpload.addEventListener("click", () => activateSourceTab("upload"));
   }
 
   async function handleLocalVideoUpload(file) {
@@ -408,9 +594,9 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       const data = await res.json();
       urlInput.value = data.url;
-      uploadLabelText.textContent = `Uploaded: ${file.name}`;
-      showToast(`Uploaded ${file.name} — starting AutoCut!`);
-      triggerAnalyze(data.url);
+      uploadLabelText.textContent = `Uploaded: ${file.name} - advancing to Clips Setup`;
+      showToast(`Uploaded ${file.name}`);
+      setWizardStep(2, "next");
     } catch (err) {
       uploadLabelText.textContent = "Drop any MP4, MOV, MKV, or WEBM file here";
       showToast(err.message || "Video upload failed", true);
@@ -426,12 +612,14 @@ document.addEventListener("DOMContentLoaded", () => {
   if (dropZone) {
     dropZone.addEventListener("dragover", (e) => {
       e.preventDefault();
-      dropZone.classList.add("border-brand-500");
+      dropZone.style.borderColor = "var(--accent)";
     });
-    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("border-brand-500"));
+    dropZone.addEventListener("dragleave", () => {
+      dropZone.style.borderColor = "rgba(0, 0, 0, 0.14)";
+    });
     dropZone.addEventListener("drop", (e) => {
       e.preventDefault();
-      dropZone.classList.remove("border-brand-500");
+      dropZone.style.borderColor = "rgba(0, 0, 0, 0.14)";
       if (e.dataTransfer.files && e.dataTransfer.files[0]) handleLocalVideoUpload(e.dataTransfer.files[0]);
     });
   }
@@ -453,7 +641,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const txt = await navigator.clipboard.readText();
         if (txt && txt.trim()) {
           urlInput.value = txt.trim();
-          showToast("Pasted link from clipboard");
+          validateSourceInline();
+          showToast("Link pasted from clipboard");
         }
       } catch (_) {
         urlInput.focus();
@@ -465,7 +654,12 @@ document.addEventListener("DOMContentLoaded", () => {
     chip.addEventListener("click", () => {
       const target = chip.dataset.url;
       urlInput.value = target;
-      triggerAnalyze(target);
+      validateSourceInline();
+      if (target.startsWith("demo://")) {
+        triggerAnalyze(target);
+      } else {
+        setWizardStep(2, "next");
+      }
     });
   });
 
@@ -478,13 +672,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
   clipForm.addEventListener("submit", (e) => {
     e.preventDefault();
+    if (currentWizardStep === 1) {
+      if (btnWizardNext) btnWizardNext.click();
+      return;
+    }
     const url = urlInput.value.trim();
     if (!url) return showToast("Please enter a YouTube link or upload a video", true);
     triggerAnalyze(url);
   });
 
   // =========================================================
-  // ASYNC JOB PIPELINE & REAL LOADING TELEMETRY
+  // ANALYSIS PIPELINE & FIRST-CLIP AUTO-CUT FLOW
   // =========================================================
   function stopJobTimers() {
     clearTimeout(activePollTimer);
@@ -492,18 +690,21 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function updateProcessingSteps(stepNum, pct, title, detail) {
-    progressBar.style.width = `${Math.max(5, Math.min(100, pct))}%`;
+    progressBar.style.width = `${Math.max(8, Math.min(100, pct))}%`;
     processStatusTitle.textContent = title;
     processStatusDesc.textContent = detail;
     ["step1", "step2", "step3", "step4"].forEach((id, idx) => {
       const el = document.getElementById(id);
       if (!el) return;
       if (idx + 1 < stepNum) {
-        el.className = "text-emerald-400 font-semibold";
+        el.style.color = "var(--success)";
+        el.style.fontWeight = "600";
       } else if (idx + 1 === stepNum) {
-        el.className = "text-brand-400 font-bold";
+        el.style.color = "var(--accent)";
+        el.style.fontWeight = "700";
       } else {
-        el.className = "text-slate-500";
+        el.style.color = "var(--text-tertiary)";
+        el.style.fontWeight = "500";
       }
     });
   }
@@ -533,7 +734,7 @@ document.addEventListener("DOMContentLoaded", () => {
       processElapsedTimer.textContent = `${sec}s`;
     }, 100);
 
-    updateProcessingSteps(1, 10, "Starting AutoCut Engine...", "Validating source URL & initializing pipeline...");
+    updateProcessingSteps(1, 14, "Connecting to Klipnux Engine...", "Validating video source and preparing extraction...");
 
     try {
       const maxClips = parseInt(clipsCountSelect.value, 10) || 12;
@@ -546,7 +747,6 @@ document.addEventListener("DOMContentLoaded", () => {
         workspaceCaptionSelect.value = captionSelect.value;
       }
 
-      let jobId = null;
       const startRes = await fetch(`${API_BASE}/api/analyze/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -554,8 +754,7 @@ document.addEventListener("DOMContentLoaded", () => {
       });
 
       if (startRes.status === 404 || startRes.status === 405) {
-        // Fallback to direct synchronous analyze endpoint if async route unavailable
-        updateProcessingSteps(2, 48, "2. Running AutoCut Pipeline...", "Extracting transcript and scoring viral moments...");
+        updateProcessingSteps(2, 52, "2. Extracting Speech & Scoring...", "Finding best high-retention moments...");
         const syncRes = await fetch(`${API_BASE}/api/analyze`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -567,9 +766,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         const syncData = await syncRes.json();
         stopJobTimers();
-        hydrateWorkspace(syncData);
-        showView("workspace");
-        showToast(`Extracted ${currentClips.length} viral clips!`);
+        await hydrateWorkspace(syncData);
         return;
       }
 
@@ -579,9 +776,16 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       const startJson = await startRes.json();
-      jobId = startJson.job_id;
 
-      // Poll live job state until completed or failed
+      // Vercel serverless mode completes inline and returns job.result directly
+      if (startJson.status === "completed" && startJson.result) {
+        updateProcessingSteps(4, 95, "4. Preparing Clip #1 Preview...", "Launching Klipnux Studio...");
+        stopJobTimers();
+        await hydrateWorkspace(startJson.result);
+        return;
+      }
+
+      const jobId = startJson.job_id;
       const pollJob = async () => {
         if (activeJobCancelled) return;
         const jobRes = await fetch(`${API_BASE}/api/jobs/${jobId}`);
@@ -592,9 +796,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (job.status === "completed" && job.result) {
           stopJobTimers();
-          hydrateWorkspace(job.result);
-          showView("workspace");
-          showToast(`Extracted ${currentClips.length} viral clips!`);
+          await hydrateWorkspace(job.result);
           return;
         }
         if (job.status === "failed") {
@@ -616,7 +818,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   // WORKSPACE HYDRATION, HEATMAP, FILTER & QUEUE
   // =========================================================
-  function hydrateWorkspace(data) {
+  async function hydrateWorkspace(data) {
     currentVideoInfo = data.video_info || {};
     currentClips = data.clips || [];
     totalVideoDuration = data.timeline_duration || currentVideoInfo.duration || 600;
@@ -625,22 +827,28 @@ document.addEventListener("DOMContentLoaded", () => {
     if (sortClipsSelect) sortClipsSelect.value = "timeline";
     if (chkSelectAllClips) chkSelectAllClips.checked = false;
 
-    const srcType = currentVideoInfo.is_demo ? "DEMO STUDIO" : currentVideoInfo.is_local ? "LOCAL UPLOAD" : "YOUTUBE LIVE";
+    const srcType = currentVideoInfo.is_demo ? "DEMO STUDIO" : currentVideoInfo.is_local ? "LOCAL VIDEO" : "YOUTUBE";
     headerSourceBadge.textContent = srcType;
+    headerSourceBadge.className = currentVideoInfo.is_demo
+      ? "kn-badge kn-badge-blue"
+      : "kn-badge kn-badge-green";
     headerVideoTitle.textContent = currentVideoInfo.title || "Untitled Video";
 
     videoTitle.textContent = currentVideoInfo.title || "Analyzed Video";
     videoChannel.textContent = currentVideoInfo.channel || "Creator";
     videoThumb.src = currentVideoInfo.thumbnail || "https://images.unsplash.com/photo-1590602847861-f357a9332bbc?w=400&q=80";
     timelineDurationBadge.textContent = formatTime(totalVideoDuration);
-    clipsFoundBadge.textContent = `${currentClips.length} Viral Clips Found`;
+    clipsFoundBadge.textContent = `${currentClips.length} Clips Found`;
     countAll.textContent = String(currentClips.length);
 
+    showView("workspace");
     syncAspectButtonsFromSelect();
     renderTimelineHeatmap();
     buildDynamicCategoryFilters();
     renderClipsQueue();
     updateBatchCountLabel();
+
+    showToast(`Found ${currentClips.length} clips — cutting Clip #1 preview...`);
 
     if (currentClips.length > 0) {
       if (currentVideoInfo.is_demo && !renderedClipsMap[currentClips[0].id]) {
@@ -655,10 +863,10 @@ document.addEventListener("DOMContentLoaded", () => {
           signature: getClipSignature(currentClips[0]),
           waveform: currentClips[0].waveform_preview,
         };
-      }
-      selectClip(currentClips[0]);
-      if (!currentVideoInfo.is_demo) {
-        renderAndPlayClip(currentClips[0]);
+        selectClip(currentClips[0]);
+      } else {
+        selectClip(currentClips[0]);
+        await renderAndPlayClip(currentClips[0]);
       }
     }
   }
@@ -669,19 +877,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
     currentClips.forEach((clip) => {
       const leftPct = Math.min(96, Math.max(0.5, (clip.start_time / totalSecs) * 100));
-      const widthPct = Math.max(1.8, Math.min(100 - leftPct, (clip.duration / totalSecs) * 100));
+      const widthPct = Math.max(2.0, Math.min(100 - leftPct, (clip.duration / totalSecs) * 100));
       const span = document.createElement("div");
-      const scoreColor = clip.score >= 92 ? "bg-emerald-500" : clip.score >= 85 ? "bg-brand-500" : "bg-amber-500";
+      const bg = clip.score >= 92 ? "var(--success)" : clip.score >= 85 ? "var(--accent)" : "var(--warning)";
       const isSelected = activeClip && activeClip.id === clip.id;
 
-      span.className = `heatmap-span absolute top-1 bottom-1 rounded cursor-pointer group ${scoreColor} ${isSelected ? "opacity-100 ring-2 ring-white" : "opacity-65"}`;
+      span.className = "heatmap-span";
       span.style.left = `${leftPct}%`;
       span.style.width = `${widthPct}%`;
+      span.style.background = bg;
+      span.style.opacity = isSelected ? "1" : "0.62";
+      span.style.boxShadow = isSelected ? "0 0 0 2px #ffffff, 0 0 0 4px var(--accent)" : "none";
       span.dataset.markerClipId = clip.id;
 
       span.innerHTML = `
-        <div class="hidden group-hover:block absolute bottom-8 left-1/2 -translate-x-1/2 bg-surface-900 border border-white/[0.15] text-white text-[10px] px-2.5 py-1.5 rounded-lg shadow-2xl whitespace-nowrap z-50 font-mono">
-          #${clip.index} · ${formatTime(clip.start_time)}–${formatTime(clip.end_time)} (${Math.round(clip.duration)}s) · Score ${clip.score}
+        <div class="heatmap-tooltip kn-tabular">
+          #${clip.index} &middot; ${formatTime(clip.start_time)}-${formatTime(clip.end_time)} (${Math.round(clip.duration)}s) &middot; Score ${clip.score}
         </div>
       `;
 
@@ -708,11 +919,10 @@ document.addEventListener("DOMContentLoaded", () => {
       const btn = document.createElement("button");
       btn.type = "button";
       const isActive = activeCategory === tag;
-      btn.className = `studio-pressable px-2.5 py-1 rounded-lg text-[11px] font-semibold border ${
-        isActive
-          ? "bg-brand-600 text-white border-brand-500"
-          : "bg-surface-950 hover:bg-surface-850 text-slate-300 border-white/[0.07]"
-      }`;
+      btn.className = "kn-pressable kn-tabular";
+      btn.style.cssText = isActive
+        ? "padding: 5px 11px; border-radius: 980px; border: 1px solid var(--accent); background: var(--accent); color: #ffffff; font-size: 11.5px; font-weight: 600;"
+        : "padding: 5px 11px; border-radius: 980px; border: 1px solid var(--border-hairline); background: var(--bg-subtle); color: var(--text-secondary); font-size: 11.5px; font-weight: 600;";
       btn.textContent = `${label} (${cnt})`;
       btn.addEventListener("click", () => {
         activeCategory = tag;
@@ -724,6 +934,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
     addPill("all", "All", currentClips.length);
     Object.keys(counts).forEach((tag) => addPill(tag, names[tag], counts[tag]));
+  }
+
+  function categoryBadgeClass(tag) {
+    const map = {
+      hook: "kn-badge-red",
+      insight: "kn-badge-blue",
+      high_energy: "kn-badge-amber",
+      rule: "kn-badge-green",
+      story: "kn-badge-purple",
+      funny: "kn-badge-amber",
+    };
+    return map[tag] || "kn-badge-neutral";
   }
 
   function renderClipsQueue() {
@@ -740,7 +962,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     clipCardsList.innerHTML = "";
     if (!filteredClips.length) {
-      clipCardsList.innerHTML = `<div class="text-xs text-slate-500 text-center py-8">No clips match this category.</div>`;
+      clipCardsList.innerHTML = `<div style="font-size: 12.5px; color: var(--text-secondary); text-align: center; padding: 32px 12px;">No clips match this category.</div>`;
       return;
     }
 
@@ -751,40 +973,40 @@ document.addEventListener("DOMContentLoaded", () => {
       const isFreshRendered = rendered && rendered.signature === getClipSignature(clip);
       const isStaleRendered = rendered && !isFreshRendered;
 
-      card.className = `p-3 rounded-xl border cursor-pointer transition-colors space-y-2 ${
-        isActive
-          ? "bg-surface-850 border-brand-500/70"
-          : "bg-surface-950/80 hover:bg-surface-850/70 border-white/[0.07]"
-      }`;
+      card.className = `clip-card ${isActive ? "active" : ""}`;
       card.dataset.clipId = clip.id;
 
       const statusBadge = isFreshRendered
-        ? `<span class="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-[10px] font-mono font-bold">MP4 READY</span>`
+        ? `<span class="kn-badge kn-badge-green" style="font-size: 10px;">READY</span>`
         : isStaleRendered
-        ? `<span class="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-mono font-bold">MODIFIED</span>`
-        : `<span class="px-1.5 py-0.5 rounded bg-surface-800 text-slate-400 text-[10px] font-mono">READY TO CUT</span>`;
+        ? `<span class="kn-badge kn-badge-amber" style="font-size: 10px;">EDITED</span>`
+        : `<span class="kn-badge kn-badge-neutral" style="font-size: 10px;">QUEUED</span>`;
+
+      const actionBtnStyle = isFreshRendered
+        ? "padding: 5px 12px; border-radius: 980px; border: none; background: #15803d; color: #ffffff; font-size: 11.5px; font-weight: 600;"
+        : "padding: 5px 12px; border-radius: 980px; border: none; background: var(--accent); color: #ffffff; font-size: 11.5px; font-weight: 600;";
 
       card.innerHTML = `
-        <div class="flex items-start justify-between gap-2">
-          <div class="flex items-center gap-2 min-w-0">
-            <input type="checkbox" class="clip-batch-chk rounded border-white/20 bg-surface-900 text-brand-500 focus:ring-0" ${selectedClipIds.has(clip.id) ? "checked" : ""} />
-            <span class="text-xs font-mono font-bold text-slate-400">#${clip.index}</span>
-            <span class="px-1.5 py-0.5 rounded border text-[10px] font-semibold ${clip.category_badge || "bg-brand-500/15 text-brand-300 border-brand-500/30"}">${clip.category}</span>
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px;">
+          <div style="display: flex; align-items: center; gap: 7px; min-width: 0;">
+            <input type="checkbox" class="clip-batch-chk" style="width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer;" ${selectedClipIds.has(clip.id) ? "checked" : ""} />
+            <span class="kn-tabular" style="font-size: 11.5px; font-weight: 700; color: var(--text-secondary);">#${clip.index}</span>
+            <span class="kn-badge ${categoryBadgeClass(clip.category_tag)}" style="font-size: 10.5px;">${clip.category}</span>
           </div>
-          <span class="px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[11px] font-mono font-bold shrink-0">${clip.score}</span>
+          <span class="kn-badge kn-badge-green kn-tabular" style="font-weight: 700;">${clip.score}</span>
         </div>
 
-        <h4 class="text-xs font-bold text-white leading-snug line-clamp-2">${clip.hook_title}</h4>
+        <h4 style="font-size: 13px; font-weight: 700; color: var(--text-primary); margin: 0 0 8px; line-height: 1.35;">${clip.hook_title}</h4>
 
-        <div class="flex items-center justify-between gap-2 pt-1 text-[11px] font-mono text-slate-400">
-          <span>${formatTime(clip.start_time)}–${formatTime(clip.end_time)} · ${Math.round(clip.duration)}s</span>
-          <div class="flex items-center gap-1.5">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+          <span class="kn-tabular" style="font-size: 11.5px; color: var(--text-secondary);">${formatTime(clip.start_time)}-${formatTime(clip.end_time)} &middot; ${Math.round(clip.duration)}s</span>
+          <div style="display: flex; align-items: center; gap: 6px;">
             ${statusBadge}
-            <button type="button" class="btn-card-render studio-pressable px-2.5 py-1 rounded-lg ${isFreshRendered ? "bg-emerald-600 hover:bg-emerald-500" : "bg-brand-600 hover:bg-brand-500"} text-white font-sans font-semibold text-[11px]">
+            <button type="button" class="btn-card-render kn-pressable" style="${actionBtnStyle}">
               ${isFreshRendered ? "Play" : "Cut"}
             </button>
-            <button type="button" class="btn-card-download studio-pressable p-1.5 rounded-lg bg-surface-850 hover:bg-emerald-600 text-slate-300 hover:text-white border border-white/[0.08]" title="Download MP4">
-              <i data-lucide="download" class="w-3.5 h-3.5"></i>
+            <button type="button" class="btn-card-download kn-pressable kn-icon-btn" style="min-height: 28px; padding: 4px 8px;" title="Download MP4">
+              <i data-lucide="download" style="width: 13px; height: 13px;"></i>
             </button>
           </div>
         </div>
@@ -798,13 +1020,14 @@ document.addEventListener("DOMContentLoaded", () => {
         updateBatchCountLabel();
       });
 
-      card.querySelector(".btn-card-render").addEventListener("click", (e) => {
+      card.querySelector(".btn-card-render").addEventListener("click", async (e) => {
         e.stopPropagation();
         selectClip(clip);
+        setMobilePane("preview");
         if (isFreshRendered) {
           loadVideoPlayer(rendered);
         } else {
-          renderAndPlayClip(clip);
+          await renderAndPlayClip(clip);
         }
       });
 
@@ -813,23 +1036,27 @@ document.addEventListener("DOMContentLoaded", () => {
         btnDl.addEventListener("click", async (e) => {
           e.stopPropagation();
           selectClip(clip);
-          if (isFreshRendered && rendered && rendered.download_url) {
-            triggerFileDownload(rendered.download_url, rendered.filename || `shortcut_short_${clip.index}.mp4`);
+          if (isFreshRendered && rendered) {
+            triggerClipDownload(rendered, `klipnux_short_${clip.index}.mp4`);
             showToast(`Downloading Short #${clip.index}...`);
           } else {
-            showToast(`Cutting 1080p short #${clip.index} before download...`);
+            showToast(`Cutting Clip #${clip.index} for download...`);
             const clipData = await renderAndPlayClip(clip);
-            if (clipData && clipData.download_url) {
-              triggerFileDownload(clipData.download_url, clipData.filename || `shortcut_short_${clip.index}.mp4`);
-              showToast(`Downloaded Short #${clip.index}!`);
+            if (clipData) {
+              triggerClipDownload(clipData, `klipnux_short_${clip.index}.mp4`);
+              showToast(`Downloaded Short #${clip.index}`);
             }
           }
         });
       }
 
-      card.addEventListener("click", () => selectClip(clip));
+      card.addEventListener("click", () => {
+        selectClip(clip);
+        setMobilePane("preview");
+      });
       clipCardsList.appendChild(card);
     });
+    refreshIcons();
   }
 
   if (chkSelectAllClips) {
@@ -853,7 +1080,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function updateBatchCountLabel() {
     if (!batchBtnLabel) return;
     const n = selectedClipIds.size;
-    batchBtnLabel.textContent = n > 0 ? `Batch Render Selected (${n})` : `Batch Render Top 5`;
+    batchBtnLabel.textContent = n > 0 ? `Batch Cut Selected (${n})` : "Batch Cut Top 5";
   }
 
   // =========================================================
@@ -861,10 +1088,10 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   function selectClip(clip) {
     activeClip = clip;
+    if (stageErrorOverlay) stageErrorOverlay.classList.add("hidden");
     renderTimelineHeatmap();
     renderClipsQueue();
 
-    // Sync Inspector fields
     if (inputHookTitle) inputHookTitle.value = clip.hook_title || "";
     updateTrimmerUI();
     updateInspectorMetrics(clip);
@@ -872,10 +1099,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const seo = clip.youtube_shorts_seo || {};
     if (seoPreviewText) {
-      seoPreviewText.textContent = `${seo.title || clip.hook_title} · ${(seo.tags || clip.hashtags || []).join(" ")}`;
+      seoPreviewText.textContent = `${seo.title || clip.hook_title} - ${(seo.tags || clip.hashtags || []).join(" ")}`;
     }
 
-    // Check rendered clip freshness
     const rendered = renderedClipsMap[clip.id];
     const isFresh = rendered && rendered.signature === getClipSignature(clip);
 
@@ -887,14 +1113,13 @@ document.addEventListener("DOMContentLoaded", () => {
       previewVideo.classList.add("hidden");
       if (btnToggleSound) btnToggleSound.classList.add("hidden");
 
-      // Check if YouTube source preview is available
       const isYt = currentVideoInfo && !currentVideoInfo.is_demo && !currentVideoInfo.is_local && currentVideoInfo.id && currentVideoInfo.id.length === 11;
       if (isYt && sourceYoutubeFrame) {
         playerPlaceholder.classList.add("hidden");
         sourceYoutubeFrame.classList.remove("hidden");
         const startSec = Math.max(0, Math.floor(clip.start_time));
         const endSec = Math.max(startSec + 2, Math.ceil(clip.end_time));
-        sourceYoutubeFrame.src = `https://www.youtube-nocookie.com/embed/${currentVideoInfo.id}?start=${startSec}&end=${endSec}&autoplay=1&controls=1&playsinline=1&rel=0`;
+        sourceYoutubeFrame.src = `https://www.youtube-nocookie.com/embed/${currentVideoInfo.id}?start=${startSec}&end=${endSec}&controls=1&playsinline=1&rel=0`;
       } else {
         if (sourceYoutubeFrame) {
           sourceYoutubeFrame.src = "";
@@ -904,13 +1129,12 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       if (btnDownloadClip) {
-        btnDownloadClip.classList.remove("pointer-events-none", "opacity-45");
         const span = btnDownloadClip.querySelector("span");
         if (span) span.textContent = "Cut & Download MP4";
       }
 
       renderStatusHint.textContent = rendered
-        ? "Settings changed — click below to re-cut MP4"
+        ? "Settings changed - click to re-cut MP4"
         : "Click below to cut & burn 1080p MP4";
       updateLiveStagePreview();
       initWaveform(clip.waveform_preview);
@@ -921,7 +1145,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!activeClip) return;
     if (stageCategoryPill) stageCategoryPill.textContent = activeClip.category || "Viral Moment";
     if (stageTimestamp) {
-      stageTimestamp.textContent = `${formatTime(activeClip.start_time)} – ${formatTime(activeClip.end_time)} (${Math.round(activeClip.duration)}s)`;
+      stageTimestamp.textContent = `${formatTime(activeClip.start_time)} - ${formatTime(activeClip.end_time)} (${Math.round(activeClip.duration)}s)`;
     }
 
     const bannerOn = chkWorkspaceBanner ? chkWorkspaceBanner.checked : true;
@@ -932,12 +1156,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const styleId = workspaceCaptionSelect ? workspaceCaptionSelect.value : captionSelect.value;
     const samples = {
-      hormozi: `<span class="text-white">VOLUME </span><span class="px-1.5 py-0.5 rounded bg-emerald-500 text-black">CREATES</span><span class="text-white"> SKILL</span>`,
-      mrbeast: `<span class="text-yellow-300">WAIT </span><span class="text-rose-500 scale-110 inline-block">FOR IT!</span>`,
-      tiktok: `<span class="text-white">Pace is </span><span class="text-[#FE2C55]">everything</span>`,
-      neon: `<span class="text-cyan-300">GO </span><span class="text-fuchsia-400">10X FASTER</span>`,
-      minimal: `<span class="px-2 py-0.5 rounded bg-black/80 text-white font-semibold normal-case text-xs">Consistent pacing wins</span>`,
-      podcast: `<span class="text-white">Master the </span><span class="text-amber-400">story arc</span>`,
+      hormozi: `<span style="color:#fff">VOLUME </span><span style="padding:2px 6px;border-radius:4px;background:#22c55e;color:#052e16">CREATES</span><span style="color:#fff"> SKILL</span>`,
+      mrbeast: `<span style="color:#fde047">WAIT </span><span style="color:#f43f5e">FOR IT!</span>`,
+      tiktok: `<span style="color:#fff">Pace is </span><span style="color:#fe2c55">everything</span>`,
+      neon: `<span style="color:#22d3ee">GO </span><span style="color:#e879f9">10X FASTER</span>`,
+      minimal: `<span style="padding:2px 8px;border-radius:5px;background:rgba(0,0,0,0.8);color:#fff;font-size:12px">Consistent pacing wins</span>`,
+      podcast: `<span style="color:#fff">Master the </span><span style="color:#fbbf24">story arc</span>`,
     };
     if (liveCaptionPreview) {
       liveCaptionPreview.innerHTML = samples[styleId] || samples.hormozi;
@@ -969,13 +1193,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
       span.addEventListener("click", () => {
         if (isEditWordsMode) {
-          const updated = prompt("Edit spoken caption word:", w.word);
+          const updated = prompt("Edit caption word:", w.word);
           if (updated !== null && updated.trim()) {
             if (!clip.custom_words) clip.custom_words = words.map((x) => ({ ...x }));
             clip.custom_words[idx].word = updated.trim();
             renderInteractiveTranscript(clip);
             renderClipsQueue();
-            showToast("Caption word updated — re-render to burn into MP4");
+            showToast("Caption word updated - click Cut & Apply to render");
           }
           return;
         }
@@ -984,7 +1208,7 @@ document.addEventListener("DOMContentLoaded", () => {
           previewVideo.currentTime = Math.max(0, w.start - clip.start_time);
           previewVideo.play().catch(() => {});
         } else {
-          showToast(`Timestamp ${formatTime(w.start)} — click Cut & Render Clip to seek playback`);
+          showToast(`Timestamp ${formatTime(w.start)} - click Cut & Render Clip to preview`);
         }
       });
 
@@ -996,13 +1220,12 @@ document.addEventListener("DOMContentLoaded", () => {
     btnToggleEditWords.addEventListener("click", () => {
       isEditWordsMode = !isEditWordsMode;
       btnToggleEditWords.textContent = isEditWordsMode ? "Done Editing" : "Edit Words";
-      btnToggleEditWords.className = isEditWordsMode
-        ? "studio-pressable px-2 py-0.5 rounded bg-brand-600 text-white text-[10px] font-mono font-bold"
-        : "studio-pressable px-2 py-0.5 rounded bg-surface-950 hover:bg-surface-800 border border-white/[0.08] text-[10px] font-mono text-brand-300";
+      btnToggleEditWords.style.background = isEditWordsMode ? "var(--accent)" : "var(--bg-surface)";
+      btnToggleEditWords.style.color = isEditWordsMode ? "#ffffff" : "var(--accent)";
       if (transcriptHelpHint) {
         transcriptHelpHint.textContent = isEditWordsMode
-          ? "Edit Mode Active: click any word below to rename before burning subtitles"
-          : 'Click any word to jump playback · Click "Edit Words" to correct spelling before render';
+          ? "Edit Mode Active: click any word below to rename before rendering"
+          : 'Tap any word to jump playback or click "Edit Words" to customize burned captions';
       }
       if (activeClip) renderInteractiveTranscript(activeClip);
     });
@@ -1018,7 +1241,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (inputStartTime) inputStartTime.value = formatTime(activeClip.start_time);
     if (inputEndTime) inputEndTime.value = formatTime(activeClip.end_time);
     if (trimmerDurationBadge) trimmerDurationBadge.textContent = `${formatTime(dur)} (${dur}s)`;
-    if (stageTimestamp) stageTimestamp.textContent = `${formatTime(activeClip.start_time)} – ${formatTime(activeClip.end_time)} (${dur}s)`;
+    if (stageTimestamp) stageTimestamp.textContent = `${formatTime(activeClip.start_time)} - ${formatTime(activeClip.end_time)} (${dur}s)`;
   }
 
   function onClipEdited(refreshQueue = true) {
@@ -1027,14 +1250,13 @@ document.addEventListener("DOMContentLoaded", () => {
     renderInteractiveTranscript(activeClip);
     updateLiveStagePreview();
     if (refreshQueue) renderClipsQueue();
-    // Reflect stale notice if this clip had an older MP4
     const rendered = renderedClipsMap[activeClip.id];
     if (rendered && rendered.signature !== getClipSignature(activeClip)) {
       previewVideo.pause();
       previewVideo.classList.add("hidden");
       playerPlaceholder.classList.remove("hidden");
       if (btnToggleSound) btnToggleSound.classList.add("hidden");
-      renderStatusHint.textContent = "Edited — click Cut & Render Clip to update MP4";
+      renderStatusHint.textContent = "Edited - click Cut & Render Clip to update MP4";
     }
   }
 
@@ -1093,20 +1315,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function applyAspectToFrame(aspect) {
     aspectBtns.forEach((b) => {
-      const isMatch = b.dataset.aspect === aspect;
-      b.className = isMatch
-        ? "aspect-btn active px-2.5 py-1 rounded-md bg-brand-600 text-white font-bold studio-pressable"
-        : "aspect-btn px-2.5 py-1 rounded-md text-slate-400 hover:text-white font-medium studio-pressable";
+      b.classList.toggle("active", b.dataset.aspect === aspect);
     });
     if (!deviceFrame) return;
+    deviceFrame.classList.remove("aspect-1-1", "aspect-16-9");
     if (aspect === "1:1") {
-      deviceFrame.className = "w-full max-w-[300px] aspect-square bg-black rounded-[24px] p-2 border-2 border-surface-750 shadow-2xl relative overflow-hidden flex flex-col";
+      deviceFrame.classList.add("aspect-1-1");
       layoutSelect.value = "square_1_1";
     } else if (aspect === "16:9") {
-      deviceFrame.className = "w-full max-w-[360px] aspect-[16/9] bg-black rounded-[18px] p-2 border-2 border-surface-750 shadow-2xl relative overflow-hidden flex flex-col";
+      deviceFrame.classList.add("aspect-16-9");
       layoutSelect.value = "landscape_16_9";
     } else {
-      deviceFrame.className = "w-full max-w-[265px] aspect-[9/16] bg-black rounded-[28px] p-2 border-2 border-surface-750 shadow-2xl relative overflow-hidden flex flex-col";
       if (layoutSelect.value === "square_1_1" || layoutSelect.value === "landscape_16_9") {
         layoutSelect.value = "blur_margins";
       }
@@ -1124,19 +1343,20 @@ document.addEventListener("DOMContentLoaded", () => {
     btn.addEventListener("click", () => {
       applyAspectToFrame(btn.dataset.aspect);
       onClipEdited(false);
-      showToast(`Switched aspect ratio to ${btn.dataset.aspect}`);
+      showToast(`Switched layout to ${btn.dataset.aspect}`);
     });
   });
 
   // =========================================================
-  // RENDERING, VIDEO PLAYBACK & REAL AUDIO WAVEFORM
+  // CUTTING, PLAYBACK & 1:1 POINTER WAVEFORM SCRUBBER
   // =========================================================
-  function triggerFileDownload(url, filename) {
+  function triggerClipDownload(clipData, defaultName) {
+    const url = clipData.blob_url || clipData.download_url;
     if (!url) return;
-    const fullUrl = url.startsWith("http") ? url : `${API_BASE}${url}`;
+    const fullUrl = (url.startsWith("http") || url.startsWith("blob:")) ? url : `${API_BASE}${url}`;
     const a = document.createElement("a");
     a.href = fullUrl;
-    a.download = filename || "shortcut_short.mp4";
+    a.download = clipData.filename || defaultName || "klipnux_short.mp4";
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -1145,6 +1365,7 @@ document.addEventListener("DOMContentLoaded", () => {
   async function renderAndPlayClip(clip) {
     if (!clip) return null;
     const signature = getClipSignature(clip);
+    if (stageErrorOverlay) stageErrorOverlay.classList.add("hidden");
     if (sourceYoutubeFrame) {
       sourceYoutubeFrame.src = "";
       sourceYoutubeFrame.classList.add("hidden");
@@ -1177,11 +1398,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || "Clip render failed.");
+        throw new Error(err.detail || "Failed to cut video clip.");
       }
 
       const clipData = await res.json();
       clipData.signature = signature;
+      if (clipData.inline_mp4_base64) {
+        clipData.blob_url = decodeInlineMp4ToBlobUrl(clipData.inline_mp4_base64);
+      }
       renderedClipsMap[clip.id] = clipData;
 
       if (activeClip && activeClip.id === clip.id) {
@@ -1190,10 +1414,15 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       renderClipsQueue();
       refreshStorageAndLibrary();
-      showToast(`Short #${clip.index} ready (${clipData.size_mb} MB)`);
+      showToast(`Clip #${clip.index} cut & ready (${clipData.size_mb} MB)`);
       return clipData;
     } catch (err) {
-      showToast(err.message || "Failed to render video short", true);
+      const msg = err.message || "Failed to cut video clip.";
+      showToast(msg, true);
+      if (activeClip && activeClip.id === clip.id && stageErrorOverlay && stageErrorMessage) {
+        stageErrorMessage.textContent = msg;
+        stageErrorOverlay.classList.remove("hidden");
+      }
       return null;
     } finally {
       clearInterval(renderTimerInterval);
@@ -1205,8 +1434,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (btnStageRender) btnStageRender.addEventListener("click", () => renderAndPlayClip(activeClip));
   if (btnRenderCustomCut) btnRenderCustomCut.addEventListener("click", () => renderAndPlayClip(activeClip));
+  if (btnRetryStageCut) btnRetryStageCut.addEventListener("click", () => renderAndPlayClip(activeClip));
+  if (btnStageSwitchUpload) {
+    btnStageSwitchUpload.addEventListener("click", () => {
+      showView("launcher");
+      activateSourceTab("upload");
+    });
+  }
+  if (btnStageOpenCookies) {
+    btnStageOpenCookies.addEventListener("click", () => {
+      settingsModal.classList.remove("hidden");
+      if (inputSettingsCookies) inputSettingsCookies.focus();
+    });
+  }
 
   function loadVideoPlayer(clipData) {
+    if (stageErrorOverlay) stageErrorOverlay.classList.add("hidden");
     if (sourceYoutubeFrame) {
       sourceYoutubeFrame.src = "";
       sourceYoutubeFrame.classList.add("hidden");
@@ -1215,9 +1458,18 @@ document.addEventListener("DOMContentLoaded", () => {
     previewVideo.classList.remove("hidden");
     if (btnToggleSound) btnToggleSound.classList.remove("hidden");
 
-    const streamUrl = (clipData.stream_url && clipData.stream_url.startsWith("http"))
+    const streamUrl = clipData.blob_url
+      ? clipData.blob_url
+      : (clipData.stream_url && clipData.stream_url.startsWith("http"))
       ? clipData.stream_url
       : `${API_BASE}${clipData.stream_url || clipData.download_url}`;
+
+    previewVideo.onerror = () => {
+      if (clipData.blob_url && previewVideo.src !== clipData.blob_url) {
+        previewVideo.src = clipData.blob_url;
+        previewVideo.load();
+      }
+    };
 
     previewVideo.src = streamUrl;
     previewVideo.playbackRate = speedSteps[speedIdx];
@@ -1225,7 +1477,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const playPromise = previewVideo.play();
     if (playPromise !== undefined) {
       playPromise.catch(() => {
-        // Fallback to muted playback if browser policy restricts autoplay with audio
         previewVideo.muted = true;
         if (soundIcon) soundIcon.setAttribute("data-lucide", "volume-x");
         refreshIcons();
@@ -1234,7 +1485,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     if (btnDownloadClip) {
-      btnDownloadClip.classList.remove("pointer-events-none", "opacity-45");
       const span = btnDownloadClip.querySelector("span");
       if (span) span.textContent = `Download 1080p MP4 (${clipData.size_mb || 1.2} MB)`;
     }
@@ -1246,15 +1496,15 @@ document.addEventListener("DOMContentLoaded", () => {
       const rendered = renderedClipsMap[activeClip.id];
       const isFresh = rendered && rendered.signature === getClipSignature(activeClip);
 
-      if (isFresh && rendered.download_url) {
-        triggerFileDownload(rendered.download_url, rendered.filename || `shortcut_short_${activeClip.index}.mp4`);
-        showToast(`Downloading Short #${activeClip.index} (${rendered.size_mb || '1.2'} MB)...`);
+      if (isFresh) {
+        triggerClipDownload(rendered, `klipnux_short_${activeClip.index}.mp4`);
+        showToast(`Downloading Short #${activeClip.index} (${rendered.size_mb || "1.2"} MB)...`);
       } else {
-        showToast(`Cutting 1080p short #${activeClip.index} before download...`);
+        showToast(`Cutting Short #${activeClip.index} before download...`);
         const clipData = await renderAndPlayClip(activeClip);
-        if (clipData && clipData.download_url) {
-          triggerFileDownload(clipData.download_url, clipData.filename || `shortcut_short_${activeClip.index}.mp4`);
-          showToast(`Downloaded Short #${activeClip.index}!`);
+        if (clipData) {
+          triggerClipDownload(clipData, `klipnux_short_${activeClip.index}.mp4`);
+          showToast(`Downloaded Short #${activeClip.index}`);
         }
       }
     });
@@ -1264,7 +1514,7 @@ document.addEventListener("DOMContentLoaded", () => {
     btnToggleSound.addEventListener("click", () => {
       previewVideo.muted = !previewVideo.muted;
       soundIcon.setAttribute("data-lucide", previewVideo.muted ? "volume-x" : "volume-2");
-      soundIcon.className = previewVideo.muted ? "w-3.5 h-3.5 text-amber-400" : "w-3.5 h-3.5 text-emerald-400";
+      soundIcon.style.color = previewVideo.muted ? "#fbbf24" : "#4ade80";
       refreshIcons();
     });
   }
@@ -1278,26 +1528,44 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  function seekWaveformByClientX(clientX) {
+    if (!previewVideo || !previewVideo.duration || !waveformContainer) return;
+    const rect = waveformContainer.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    previewVideo.currentTime = pct * previewVideo.duration;
+  }
+
   function initWaveform(peaksArray) {
     if (!waveformContainer) return;
     const peaks = Array.isArray(peaksArray) && peaksArray.length >= 16
       ? peaksArray
       : [35, 60, 75, 45, 88, 70, 40, 82, 95, 58, 68, 90, 52, 42, 78, 84, 62, 88, 96, 72, 48, 66, 80, 92, 84, 68, 56, 86, 94, 52, 44, 78, 90, 70, 58, 82, 96, 86, 62, 48, 72, 84, 92, 68, 54, 78, 88, 58];
 
-    waveformContainer.innerHTML = `<div id="waveformPlayhead" class="absolute top-0 bottom-0 w-0.5 bg-emerald-400 z-20 pointer-events-none" style="left: 0%"></div>`;
+    waveformContainer.innerHTML = `<div id="waveformPlayhead" style="position: absolute; top: 0; bottom: 0; width: 2px; background: var(--success-bright); z-index: 20; pointer-events: none; left: 0%;"></div>`;
     peaks.forEach((h) => {
       const bar = document.createElement("div");
-      bar.className = "waveform-bar flex-1 rounded-sm bg-surface-750 opacity-50";
-      bar.style.height = `${Math.max(12, Math.min(100, h))}%`;
+      bar.className = "waveform-bar";
+      bar.style.height = `${Math.max(14, Math.min(100, h))}%`;
+      bar.style.backgroundColor = "#d2d2d7";
       waveformContainer.appendChild(bar);
     });
 
-    waveformContainer.onclick = (e) => {
-      if (!previewVideo || !previewVideo.duration) return;
-      const rect = waveformContainer.getBoundingClientRect();
-      const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-      previewVideo.currentTime = pct * previewVideo.duration;
+    // 1:1 Pointer Capture scrub interaction (WWDC Fluid Interfaces)
+    let isDragging = false;
+    waveformContainer.onpointerdown = (e) => {
+      isDragging = true;
+      if (waveformContainer.setPointerCapture) waveformContainer.setPointerCapture(e.pointerId);
+      seekWaveformByClientX(e.clientX);
       previewVideo.play().catch(() => {});
+    };
+    waveformContainer.onpointermove = (e) => {
+      if (isDragging) seekWaveformByClientX(e.clientX);
+    };
+    waveformContainer.onpointerup = (e) => {
+      isDragging = false;
+      if (waveformContainer.releasePointerCapture) {
+        try { waveformContainer.releasePointerCapture(e.pointerId); } catch (_) {}
+      }
     };
   }
 
@@ -1315,9 +1583,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const bars = document.querySelectorAll("#waveformContainer .waveform-bar");
       const activeIdx = Math.floor((pct / 100) * bars.length);
       bars.forEach((b, idx) => {
-        b.className = idx <= activeIdx
-          ? "waveform-bar flex-1 rounded-sm bg-brand-400 opacity-95"
-          : "waveform-bar flex-1 rounded-sm bg-surface-750 opacity-50";
+        b.style.backgroundColor = idx <= activeIdx ? "var(--accent)" : "#d2d2d7";
       });
 
       const absT = activeClip.start_time + rel;
@@ -1338,14 +1604,14 @@ document.addEventListener("DOMContentLoaded", () => {
       const seo = activeClip.youtube_shorts_seo || {};
       const payload = `${seo.title || activeClip.hook_title}\n\n${seo.description || activeClip.summary}\n\n${(seo.tags || activeClip.hashtags || []).join(" ")}`;
       navigator.clipboard.writeText(payload).catch(() => {});
-      showToast(`Copied SEO Title & Hashtags for Clip #${activeClip.index}`);
+      showToast(`Copied SEO copy for Clip #${activeClip.index}`);
     });
   }
 
   async function runBatchRender(targets) {
     for (let i = 0; i < targets.length; i++) {
       const clip = targets[i];
-      if (batchBtnLabel) batchBtnLabel.textContent = `Rendering ${i + 1}/${targets.length}...`;
+      if (batchBtnLabel) batchBtnLabel.textContent = `Cutting ${i + 1}/${targets.length}...`;
       const sig = getClipSignature(clip);
       try {
         const res = await fetch(`${API_BASE}/api/generate-clip`, {
@@ -1365,6 +1631,9 @@ document.addEventListener("DOMContentLoaded", () => {
         if (res.ok) {
           const clipData = await res.json();
           clipData.signature = sig;
+          if (clipData.inline_mp4_base64) {
+            clipData.blob_url = decodeInlineMp4ToBlobUrl(clipData.inline_mp4_base64);
+          }
           renderedClipsMap[clip.id] = clipData;
           renderClipsQueue();
         }
@@ -1382,7 +1651,7 @@ document.addEventListener("DOMContentLoaded", () => {
         : currentClips.slice(0, 5);
 
       btnBatchRenderAll.disabled = true;
-      showToast(`Batch rendering ${targets.length} clips...`);
+      showToast(`Batch cutting ${targets.length} clips...`);
 
       await runBatchRender(targets);
 
@@ -1392,8 +1661,69 @@ document.addEventListener("DOMContentLoaded", () => {
       if (activeClip && renderedClipsMap[activeClip.id]) {
         selectClip(activeClip);
       }
-      showToast(`Batch complete — ${targets.length} clips ready for .ZIP export!`);
+      showToast(`Batch complete - ${targets.length} clips ready`);
     });
+  }
+
+  function buildClientStoredZipBlob(entries) {
+    const crcTable = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+      crcTable[n] = c >>> 0;
+    }
+    const crc32 = (u8) => {
+      let c = 0xffffffff;
+      for (let i = 0; i < u8.length; i++) c = crcTable[(c ^ u8[i]) & 0xff] ^ (c >>> 8);
+      return (c ^ 0xffffffff) >>> 0;
+    };
+    const enc = new TextEncoder();
+    const locals = [];
+    const centrals = [];
+    let offset = 0;
+
+    entries.forEach(({ name, bytes }) => {
+      const nameBytes = enc.encode(name);
+      const crc = crc32(bytes);
+      const lh = new Uint8Array(30 + nameBytes.length);
+      const dv = new DataView(lh.buffer);
+      dv.setUint32(0, 0x04034b50, true);
+      dv.setUint16(4, 20, true);
+      dv.setUint16(8, 0, true); // stored
+      dv.setUint32(14, crc, true);
+      dv.setUint32(18, bytes.length, true);
+      dv.setUint32(22, bytes.length, true);
+      dv.setUint16(26, nameBytes.length, true);
+      lh.set(nameBytes, 30);
+      locals.push(lh, bytes);
+
+      const ch = new Uint8Array(46 + nameBytes.length);
+      const cdv = new DataView(ch.buffer);
+      cdv.setUint32(0, 0x02014b50, true);
+      cdv.setUint16(4, 20, true);
+      cdv.setUint16(6, 20, true);
+      cdv.setUint16(10, 0, true);
+      cdv.setUint32(16, crc, true);
+      cdv.setUint32(20, bytes.length, true);
+      cdv.setUint32(24, bytes.length, true);
+      cdv.setUint16(28, nameBytes.length, true);
+      cdv.setUint32(42, offset, true);
+      ch.set(nameBytes, 46);
+      centrals.push(ch);
+
+      offset += lh.length + bytes.length;
+    });
+
+    const cdSize = centrals.reduce((acc, c) => acc + c.length, 0);
+    const eocd = new Uint8Array(22);
+    const edv = new DataView(eocd.buffer);
+    edv.setUint32(0, 0x06054b50, true);
+    edv.setUint16(8, entries.length, true);
+    edv.setUint16(10, entries.length, true);
+    edv.setUint32(12, cdSize, true);
+    edv.setUint32(16, offset, true);
+
+    return new Blob([...locals, ...centrals, eocd], { type: "application/zip" });
   }
 
   async function triggerZipExport() {
@@ -1401,10 +1731,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (renderedList.length === 0) {
       if (!currentClips.length) {
-        showToast("No clips available to export", true);
+        showToast("Analyze or select a demo first to export clips", true);
         return;
       }
-      showToast("Batch rendering top clips for .ZIP pack...", false);
+      showToast("Cutting top clips for ZIP export...", false);
       const targets = currentClips.slice(0, Math.min(3, currentClips.length));
       await runBatchRender(targets);
     }
@@ -1425,23 +1755,44 @@ document.addEventListener("DOMContentLoaded", () => {
         res = await fetch(`${API_BASE}/api/download-all-zip`);
       }
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || "ZIP export failed");
+      let blob = null;
+      if (res.ok) {
+        blob = await res.blob();
+      } else {
+        // Serverless fallback: assemble ZIP cleanly from cached inline MP4 bytes if container switched
+        const memEntries = [];
+        for (const c of Object.values(renderedClipsMap)) {
+          if (!c || !c.filename) continue;
+          if (selectedFilenames.length > 0 && !selectedFilenames.includes(c.filename)) continue;
+          if (c.blob_url) {
+            const ab = await (await fetch(c.blob_url)).arrayBuffer();
+            memEntries.push({ name: c.filename, bytes: new Uint8Array(ab) });
+          } else if (c.inline_mp4_base64) {
+            const bin = atob(c.inline_mp4_base64);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            memEntries.push({ name: c.filename, bytes });
+          }
+        }
+        if (memEntries.length > 0) {
+          blob = buildClientStoredZipBlob(memEntries);
+        } else {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || "ZIP export failed");
+        }
       }
 
-      const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "shortcut_viral_shorts_pack.zip";
+      a.download = "klipnux_viral_shorts_pack.zip";
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-      showToast("Downloaded all clips in .ZIP pack!");
+      showToast("Downloaded Klipnux ZIP pack");
     } catch (err) {
-      showToast(err.message || "Failed to download .ZIP pack", true);
+      showToast(err.message || "Failed to download ZIP pack", true);
     }
   }
   if (btnDownloadZip) btnDownloadZip.addEventListener("click", triggerZipExport);
