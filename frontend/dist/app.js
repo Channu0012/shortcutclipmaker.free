@@ -1105,64 +1105,95 @@ document.addEventListener("DOMContentLoaded", () => {
       ctx.fillStyle = "#0b0c10";
       ctx.fillRect(0, 0, width, height);
 
-      // Blurred backdrop
+      // Vibrant contrast-graded blurred backdrop
       const bgScale = Math.max(width / vw, height / vh);
       const bgW = vw * bgScale;
       const bgH = vh * bgScale;
-      ctx.filter = "blur(18px) brightness(0.45)";
+      ctx.filter = "blur(22px) brightness(0.42) saturate(1.22)";
       ctx.drawImage(srcVid, (width - bgW) / 2, (height - bgH) / 2, bgW, bgH);
       ctx.filter = "none";
 
-      // Sharp foreground video frame
+      // Foreground frame with studio drop shadow
       const fgScale = layoutStyle === "center_crop" ? Math.max(width / vw, height / vh) : Math.min(width / vw, height / vh);
       const fgW = vw * fgScale;
       const fgH = vh * fgScale;
-      ctx.drawImage(srcVid, (width - fgW) / 2, (height - fgH) / 2, fgW, fgH);
+      const fgX = (width - fgW) / 2;
+      const fgY = (height - fgH) / 2;
+      ctx.save();
+      ctx.shadowColor = "rgba(0, 0, 0, 0.56)";
+      ctx.shadowBlur = 32;
+      ctx.drawImage(srcVid, fgX, fgY, fgW, fgH);
+      ctx.restore();
 
-      // Hook banner
+      // Editorial top Hook Banner
       if (showBanner && clip.hook_title) {
         ctx.font = "800 32px Inter, -apple-system, sans-serif";
         const lines = wrapCanvasLines(ctx, clip.hook_title, width - 96).slice(0, 2);
-        const boxH = lines.length * 40 + 26;
-        const boxW = Math.min(width - 56, Math.max(260, ...lines.map((l) => ctx.measureText(l).width + 44)));
+        const boxH = lines.length * 40 + 28;
+        const boxW = Math.min(width - 52, Math.max(260, ...lines.map((l) => ctx.measureText(l).width + 48)));
         const bx = (width - boxW) / 2;
-        const by = Math.round(height * 0.08);
-        ctx.fillStyle = "rgba(17, 19, 25, 0.84)";
+        const by = Math.round(height * 0.075);
+        ctx.fillStyle = "rgba(15, 17, 25, 0.90)";
         ctx.beginPath();
         if (ctx.roundRect) ctx.roundRect(bx, by, boxW, boxH, 16);
         else ctx.rect(bx, by, boxW, boxH);
         ctx.fill();
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.16)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
         ctx.fillStyle = "#ffffff";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         lines.forEach((line, idx) => {
-          ctx.fillText(line, width / 2, by + 32 + idx * 38);
+          ctx.fillText(line, width / 2, by + 34 + idx * 38);
         });
       }
 
-      // Active caption overlay
+      // Word-by-word karaoke pop caption overlay
       const curTime = srcVid.currentTime || startSec;
-      const curIdx = Math.max(0, words.findIndex((w) => curTime >= w.start && curTime <= w.end));
-      const sliceWords = words.slice(Math.max(0, curIdx - 1), curIdx + 3).map((w) => w.word).join(" ").trim();
-      if (sliceWords) {
-        ctx.font = "900 38px Inter, -apple-system, sans-serif";
-        ctx.textAlign = "center";
+      const foundIdx = words.findIndex((w) => curTime >= w.start && curTime <= w.end);
+      const curIdx = foundIdx >= 0 ? foundIdx : Math.max(0, words.findIndex((w) => curTime < w.start));
+      const groupSize = (captionStyle === "minimal" || captionStyle === "podcast") ? 4 : 3;
+      const groupStart = Math.floor(Math.max(0, curIdx) / groupSize) * groupSize;
+      const chunkWords = words.slice(groupStart, groupStart + groupSize);
+      if (chunkWords.length > 0) {
+        const isCaps = captionStyle === "hormozi" || captionStyle === "mrbeast" || captionStyle === "neon";
+        const labels = chunkWords.map((w) => (isCaps ? String(w.word || "").toUpperCase() : String(w.word || "")));
+        ctx.font = "900 40px Inter, -apple-system, sans-serif";
         ctx.textBaseline = "middle";
-        const capY = Math.round(height * 0.81);
-        const padX = 28;
-        const textW = Math.min(width - 72, ctx.measureText(sliceWords).width);
+        ctx.textAlign = "left";
+        const gap = 16;
+        const widths = labels.map((l) => ctx.measureText(l).width);
+        const totalRowW = widths.reduce((a, b) => a + b, 0) + gap * Math.max(0, labels.length - 1);
+        const capY = Math.round(height * 0.80);
+
         if (captionStyle === "minimal" || captionStyle === "podcast") {
-          ctx.fillStyle = "rgba(15, 17, 23, 0.78)";
+          ctx.fillStyle = "rgba(15, 17, 23, 0.82)";
           ctx.beginPath();
-          if (ctx.roundRect) ctx.roundRect((width - textW - padX * 2) / 2, capY - 30, textW + padX * 2, 60, 14);
-          else ctx.rect((width - textW - padX * 2) / 2, capY - 30, textW + padX * 2, 60);
+          if (ctx.roundRect) ctx.roundRect((width - totalRowW - 44) / 2, capY - 32, totalRowW + 44, 64, 14);
+          else ctx.rect((width - totalRowW - 44) / 2, capY - 32, totalRowW + 44, 64);
           ctx.fill();
         }
-        ctx.lineWidth = 6;
-        ctx.strokeStyle = "rgba(0, 0, 0, 0.88)";
-        ctx.strokeText(sliceWords, width / 2, capY, width - 64);
-        ctx.fillStyle = captionStyle === "tiktok" ? "#f472b6" : captionStyle === "mrbeast" ? "#0ec88a" : "#fde047";
-        ctx.fillText(sliceWords, width / 2, capY, width - 64);
+
+        const activeColor = captionStyle === "tiktok" ? "#fe2c55" : captionStyle === "mrbeast" ? "#ff2d2d" : captionStyle === "neon" ? "#00ffff" : "#00ff66";
+        let cursorX = (width - totalRowW) / 2;
+        labels.forEach((lbl, idx) => {
+          const isActive = (groupStart + idx) === curIdx;
+          const wPx = widths[idx];
+          if (isActive && captionStyle === "hormozi") {
+            ctx.fillStyle = "#00bf49";
+            ctx.beginPath();
+            if (ctx.roundRect) ctx.roundRect(cursorX - 10, capY - 27, wPx + 20, 54, 10);
+            else ctx.rect(cursorX - 10, capY - 27, wPx + 20, 54);
+            ctx.fill();
+          }
+          ctx.lineWidth = isActive ? 8 : 6;
+          ctx.strokeStyle = "rgba(0, 0, 0, 0.92)";
+          ctx.strokeText(lbl, cursorX, capY);
+          ctx.fillStyle = isActive ? (captionStyle === "hormozi" ? "#ffffff" : activeColor) : (captionStyle === "mrbeast" ? "#fde047" : "#ffffff");
+          ctx.fillText(lbl, cursorX, capY);
+          cursorX += wPx + gap;
+        });
       }
       ctx.restore();
     };
@@ -1483,8 +1514,14 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (err) {
       stopJobTimers();
       if (!activeJobCancelled) {
+        const msg = err.message || "Unable to open this video URL.";
         showView("launcher");
-        showToast(err.message || "Unable to open this video URL.", true);
+        setWizardStep(1, "back");
+        if (urlStatusHint) {
+          urlStatusHint.textContent = msg;
+          urlStatusHint.style.color = "var(--danger)";
+        }
+        showToast(msg, true);
       }
     }
   }

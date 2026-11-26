@@ -9,7 +9,7 @@ from typing import Any, Callable, Dict, List, Optional
 import yt_dlp
 from youtube_transcript_api import YouTubeTranscriptApi
 
-from backend.config import COOKIES_PATH, FFMPEG_PATH, IS_VERCEL, TEMP_DIR, UPLOADS_DIR
+from backend.config import COOKIES_PATH, FFMPEG_PATH, IS_VERCEL, TEMP_DIR, UPLOADS_DIR, YTDLP_PROXY
 from backend.demo_datasets import get_demo_transcript
 from backend.downloader import PLAYER_CLIENT_PROFILES, VideoDownloader, build_ytdlp_opts
 
@@ -132,7 +132,7 @@ class VideoTranscriber:
         if progress_cb:
             progress_cb("Fetching YouTube speech captions...")
         try:
-            segments = self._extract_via_youtube_transcript_api(video_id)
+            segments = self._extract_via_youtube_transcript_api(video_id, cookie_file=cookie_file)
             if segments and len(segments) >= 3:
                 self._save_cache(s, disk_cache, segments)
                 return segments
@@ -301,8 +301,27 @@ class VideoTranscriber:
                 continue
         return None
 
-    def _extract_via_youtube_transcript_api(self, video_id: str) -> Optional[List[Dict[str, Any]]]:
-        ytt = YouTubeTranscriptApi()
+    def _extract_via_youtube_transcript_api(
+        self, video_id: str, cookie_file: Optional[Path] = None
+    ) -> Optional[List[Dict[str, Any]]]:
+        import http.cookiejar
+        import requests
+        from youtube_transcript_api.proxies import GenericProxyConfig
+
+        session = requests.Session()
+        active_cookie = cookie_file if (cookie_file and cookie_file.exists() and cookie_file.stat().st_size > 20) else None
+        if not active_cookie and COOKIES_PATH.exists() and COOKIES_PATH.stat().st_size > 20:
+            active_cookie = COOKIES_PATH
+        if active_cookie:
+            try:
+                jar = http.cookiejar.MozillaCookieJar(str(active_cookie))
+                jar.load(ignore_discard=True, ignore_expires=True)
+                session.cookies.update(jar)
+            except Exception:
+                pass
+
+        proxy_cfg = GenericProxyConfig(https_url=YTDLP_PROXY, http_url=YTDLP_PROXY) if YTDLP_PROXY else None
+        ytt = YouTubeTranscriptApi(proxy_config=proxy_cfg, http_client=session)
         transcripts_list = ytt.list(video_id)
         target = None
         try:

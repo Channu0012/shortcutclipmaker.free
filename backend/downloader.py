@@ -93,6 +93,31 @@ class VideoDownloader:
             return True
         return COOKIES_PATH.exists() and COOKIES_PATH.stat().st_size > 20
 
+    @staticmethod
+    def _classify_ytdlp_error(raw_err: str) -> str:
+        low = (raw_err or "").lower()
+        if "members-only" in low or "join this channel" in low or "subscriber_only" in low:
+            return (
+                "This YouTube video is members-only (requires channel membership). "
+                "Paste signed-in member cookies in Studio Settings, upload the MP4 directly, or test with Instant Demo."
+            )
+        if "private video" in low:
+            return "This YouTube video is private. Only public or authorized cookie-backed videos can be clipped."
+        if "confirm your age" in low or "age-restricted" in low:
+            return "This YouTube video is age-restricted. Paste signed-in YouTube cookies in Studio Settings or upload the MP4 directly."
+        if "bot" in low or "sign in" in low or "cookies" in low:
+            return (
+                "YouTube blocked automated server downloads from this cloud IP. "
+                "Upload your MP4 file directly (cuts offline in-browser for any size), paste YouTube cookies in Settings, or use a Local Engine."
+            )
+        if "video unavailable" in low or "not available" in low or "removed" in low:
+            return "This YouTube video is unavailable, deleted, or region-restricted."
+        clean_err = re.sub(r"ERROR:\s*\[[^\]]+\]\s*[\w-]+:\s*", "", (raw_err or "").strip())
+        clean_err = clean_err.split("|")[-1].strip()[:140]
+        if clean_err:
+            return f"Could not fetch this video stream from YouTube ({clean_err}). Upload the MP4 directly or test with Instant Demo."
+        return "Could not fetch this video stream from YouTube. Try uploading the MP4 directly or testing with Instant Demo."
+
     def get_video_info(self, url: str, cookie_file: Optional[Path] = None) -> Dict[str, Any]:
         """Fetches real metadata without downloading the full video."""
         clean_url = url.strip()
@@ -143,12 +168,16 @@ class VideoDownloader:
                 last_err = exc
                 continue
 
+        err_low = str(last_err or "").lower()
+        if any(k in err_low for k in ("members-only", "join this channel", "private video", "video unavailable")):
+            raise PermissionError(self._classify_ytdlp_error(str(last_err)))
+
         fallback_data = self._fetch_oembed_fallback(clean_url)
         if fallback_data:
             self._info_cache[clean_url] = fallback_data
             return fallback_data
 
-        raise RuntimeError(f"Unable to read YouTube video metadata: {last_err}")
+        raise RuntimeError(self._classify_ytdlp_error(str(last_err or "Unable to read YouTube video metadata")))
 
     def _fetch_oembed_fallback(self, url: str) -> Optional[Dict[str, Any]]:
         vid = self.extract_video_id(url)
@@ -181,6 +210,11 @@ class VideoDownloader:
                 m_dur = re.search(r'"lengthSeconds"\s*:\s*"(\d+)"', page)
                 if m_dur:
                     duration = int(m_dur.group(1))
+                else:
+                    m_iso = re.search(r'<meta[^>]+itemprop="duration"[^>]+content="PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?"', page, re.IGNORECASE)
+                    if m_iso:
+                        h, m, s = (int(x or 0) for x in m_iso.groups())
+                        duration = h * 3600 + m * 60 + s
                 if not title:
                     m_title = re.search(r"<title>(.*?)</title>", page, re.IGNORECASE | re.DOTALL)
                     if m_title:
@@ -300,16 +334,7 @@ class VideoDownloader:
                 errors.append(err_msg)
 
         joined = " | ".join(errors)
-        if "bot" in joined.lower() or "sign in" in joined.lower() or "cookies" in joined.lower():
-            raise RuntimeError(
-                "YouTube blocked unauthenticated server downloads from this cloud IP. "
-                "Upload your MP4 file directly (cuts offline in-browser for any size), paste YouTube cookies in Settings, or use a Local Engine."
-            )
-
-        raise RuntimeError(
-            "Could not fetch this video stream from YouTube. "
-            "Try uploading the MP4 directly or testing with Instant Demo."
-        )
+        raise RuntimeError(self._classify_ytdlp_error(joined))
 
     def _cut_local_file(self, src_path: Path, start_sec: float, duration: float, out_path: Path) -> None:
         cmd = [

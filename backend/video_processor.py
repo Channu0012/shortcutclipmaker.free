@@ -61,12 +61,20 @@ class VideoProcessor:
         return 1080, 1920
 
     @staticmethod
+    def _has_audio_stream(video_path: Path) -> bool:
+        try:
+            probe = subprocess.run([FFMPEG_PATH, "-v", "error", "-i", str(video_path)], capture_output=True, text=True, timeout=8)
+            return "Audio:" in (probe.stderr or "")
+        except Exception:
+            return False
+
+    @staticmethod
     def _build_layout_prefix(layout_style: str) -> str:
         if layout_style == "square_1_1":
             return (
-                "[0:v]scale=108:108:force_original_aspect_ratio=increase,crop=108:108,boxblur=8:1,scale=1080:1080:flags=bilinear,setsar=1[bg];"
-                "[0:v]scale=1080:-2,setsar=1[fg];"
-                "[bg][fg]overlay=0:(H-h)/2[v0]"
+                "[0:v]scale=108:108:force_original_aspect_ratio=increase,crop=108:108,boxblur=8:1,scale=1080:1080:flags=bilinear,eq=brightness=-0.08:saturation=1.18,setsar=1[bg];"
+                "[0:v]scale=1080:1080:force_original_aspect_ratio=decrease,setsar=1[fg];"
+                "[bg][fg]overlay=(W-w)/2:(H-h)/2[v0]"
             )
         if layout_style == "landscape_16_9":
             return "[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1[v0]"
@@ -79,9 +87,9 @@ class VideoProcessor:
                 "[top][bottom]vstack=inputs=2[v0]"
             )
         return (
-            "[0:v]scale=108:192:force_original_aspect_ratio=increase,crop=108:192,boxblur=8:1,scale=1080:1920:flags=bilinear,setsar=1[bg];"
-            "[0:v]scale=1080:-2,setsar=1[fg];"
-            "[bg][fg]overlay=0:(H-h)/2[v0]"
+            "[0:v]scale=108:192:force_original_aspect_ratio=increase,crop=108:192,boxblur=8:1,scale=1080:1920:flags=bilinear,eq=brightness=-0.08:saturation=1.18,setsar=1[bg];"
+            "[0:v]scale=1080:1920:force_original_aspect_ratio=decrease,setsar=1[fg];"
+            "[bg][fg]overlay=(W-w)/2:(H-h)/2[v0]"
         )
 
     def create_short(
@@ -131,6 +139,7 @@ class VideoProcessor:
         preset = "ultrafast" if IS_VERCEL else "superfast"
         crf = "25" if IS_VERCEL else "22"
 
+        has_audio = self._has_audio_stream(input_video_path)
         cmd = [
             FFMPEG_PATH, "-y",
             "-ss", f"{seek_sec:.2f}",
@@ -143,6 +152,10 @@ class VideoProcessor:
             "-preset", preset,
             "-crf", crf,
             "-pix_fmt", "yuv420p",
+        ]
+        if has_audio:
+            cmd += ["-af", "acompressor=threshold=-18dB:ratio=3:attack=5:release=60,alimiter=limit=0.95"]
+        cmd += [
             "-c:a", "aac",
             "-b:a", "128k",
             "-movflags", "+faststart",
@@ -252,10 +265,11 @@ class VideoProcessor:
 
         primary_col = hex_to_ass(tpl.get("font_color", "#FFFFFF"))
         highlight_col = hex_to_ass(tpl.get("highlight_color", "#00FF66"))
+        emphasis_col = hex_to_ass(tpl.get("emphasis_color") or tpl.get("highlight_color", "#FFE000"))
         stroke_col = hex_to_ass(tpl.get("stroke_color", "#000000"))
         box_col = hex_to_ass(tpl.get("word_box_color", "#00BF49"))
 
-        font_name = tpl.get("font_family", "THEBOLDFONT")
+        font_name = tpl.get("font_family", "Archivo Black")
         base_font_size = int(tpl.get("font_size", 48))
         if play_h == 1080 and play_w == 1080:
             font_size = int(base_font_size * 0.85)
@@ -269,12 +283,13 @@ class VideoProcessor:
 
         stroke_width = int(tpl.get("stroke_width", 4))
         use_word_box = bool(tpl.get("word_box", False))
+        word_pop = bool(tpl.get("word_pop", True))
         is_uppercase = bool(tpl.get("uppercase", True))
         is_glow = bool(tpl.get("glow", False))
         max_words = int(tpl.get("max_words_per_line", 3))
         margin_v = max(60, int(play_h * (1.0 - pos_y_frac)))
 
-        banner_size = 40 if play_w == 1080 and play_h == 1920 else 36
+        banner_size = 42 if play_w == 1080 and play_h == 1920 else 36
         banner_margin_v = int(play_h * 0.08)
         wrap_chars = 24 if play_w == 1080 else 44
 
@@ -289,8 +304,8 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{font_name},{font_size},{primary_col},&H000000FF&,{stroke_col},&H80000000&,1,0,0,0,100,100,0,0,{border_style},{stroke_width},{shadow},2,40,40,{margin_v},1
-Style: HookBanner,{font_name},{banner_size},{highlight_col},&H000000FF&,&H000B0F1A&,&HC80B0F1A&,1,0,0,0,100,100,0,0,3,14,0,8,36,36,{banner_margin_v},1
+Style: Default,{font_name},{font_size},{primary_col},&H000000FF&,{stroke_col},&H24000000&,1,0,0,0,100,100,0,0,{border_style},{stroke_width},{shadow},2,40,40,{margin_v},1
+Style: HookBanner,{font_name},{banner_size},&H00FFFFFF&,&H000000FF&,&H260B0F1A&,&H260B0F1A&,1,0,0,0,100,100,0,0,3,18,0,8,36,36,{banner_margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -364,15 +379,16 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     w_end = min(total_dur, w_start + 0.16)
 
                 parts = []
+                pop_anim = "\\fscx112\\fscy112\\t(0,85,\\fscx100\\fscy100)" if word_pop else ""
                 for local_j, other_w in enumerate(group):
                     tok = other_w["word"].upper() if is_uppercase else other_w["word"]
                     if local_j == local_i:
                         if use_word_box:
-                            parts.append(f"{{\\c{highlight_col}\\3c{box_col}\\bord8\\shad0{glow_tag}}}{tok}{{\\rDefault}}")
-                        elif style == "mrbeast":
-                            parts.append(f"{{\\c{highlight_col}\\3c{stroke_col}\\bord6\\fscx108\\fscy108{glow_tag}}}{tok}{{\\rDefault}}")
+                            parts.append(f"{{\\c{highlight_col}\\3c{box_col}\\bord12\\shad0{glow_tag}{pop_anim}}}{tok}{{\\rDefault}}")
                         else:
-                            parts.append(f"{{\\c{highlight_col}\\3c{stroke_col}\\bord5{glow_tag}}}{tok}{{\\rDefault}}")
+                            parts.append(f"{{\\c{highlight_col}\\3c{stroke_col}\\bord{max(5, stroke_width + 1)}{glow_tag}{pop_anim}}}{tok}{{\\rDefault}}")
+                    elif re.search(r"(\d|%|#|\$)", tok):
+                        parts.append(f"{{\\c{emphasis_col}\\3c{stroke_col}\\bord{stroke_width}{glow_tag}}}{tok}{{\\rDefault}}")
                     else:
                         parts.append(f"{{\\c{primary_col}\\3c{stroke_col}\\bord{stroke_width}{glow_tag}}}{tok}{{\\rDefault}}")
 

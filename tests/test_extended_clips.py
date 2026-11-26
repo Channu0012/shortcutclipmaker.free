@@ -177,3 +177,51 @@ def test_local_binary_stream_upload_and_storage_stats():
     assert stats_res.status_code == 200
     assert "clips_count" in stats_res.json()
 
+
+def test_ytdlp_error_classification_messages():
+    from backend.downloader import VideoDownloader
+
+    mem_msg = VideoDownloader._classify_ytdlp_error(
+        "ERROR: [youtube] BkPAm95grtA: Join this channel to get access to members-only content"
+    )
+    assert "members-only" in mem_msg.lower()
+
+    priv_msg = VideoDownloader._classify_ytdlp_error("ERROR: [youtube] xYz: Private video")
+    assert "private" in priv_msg.lower()
+
+    bot_msg = VideoDownloader._classify_ytdlp_error("ERROR: Sign in to confirm you're not a bot")
+    assert "cookies" in bot_msg.lower() or "mp4" in bot_msg.lower()
+
+
+def test_caption_template_fonts_resolve_in_libass():
+    from backend.caption_templates import list_caption_templates
+    from backend.config import FONTS_DIR
+
+    proc = VideoProcessor()
+    for tpl in list_caption_templates():
+        ass_p = TEMP_DIR / f"font_check_{tpl['id']}.ass"
+        proc._generate_ass(
+            segments=[{"start": 0.0, "end": 2.0, "text": "Testing font match", "words": []}],
+            clip_start=0.0,
+            clip_end=2.0,
+            hook_title="Font Check",
+            output_ass_path=ass_p,
+            style=tpl["id"],
+        )
+        ap = str(ass_p.resolve()).replace("\\", "/").replace(":", "\\:")
+        fd = str(FONTS_DIR.resolve()).replace("\\", "/").replace(":", "\\:")
+        out_p = TEMP_DIR / f"font_check_{tpl['id']}.mp4"
+        res = subprocess.run(
+            [FFMPEG_PATH, "-y", "-f", "lavfi", "-i", "color=c=black:s=720x1280:d=0.4", "-vf", f"ass='{ap}':fontsdir='{fd}'", "-frames:v", "1", str(out_p)],
+            capture_output=True,
+            text=True,
+        )
+        ass_p.unlink(missing_ok=True)
+        out_p.unlink(missing_ok=True)
+        assert res.returncode == 0
+        font_lines = [l for l in res.stderr.splitlines() if "fontselect" in l.lower()]
+        assert font_lines and "arial-boldmt" not in "\n".join(font_lines).lower(), (
+            f"Style {tpl['id']} fell back to Arial: {font_lines}"
+        )
+
+
