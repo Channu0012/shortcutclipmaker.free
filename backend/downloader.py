@@ -15,9 +15,8 @@ except ImportError:
 import yt_dlp
 from yt_dlp.utils import download_range_func
 
-from backend.config import BASE_DIR, COOKIES_PATH, FFMPEG_PATH, IS_VERCEL, TEMP_DIR, UPLOADS_DIR
+from backend.config import BASE_DIR, COOKIES_PATH, FFMPEG_PATH, IS_VERCEL, TEMP_DIR, UPLOADS_DIR, YTDLP_PROXY
 
-# Ordered by highest reliability against YouTube bot/anonymous checks
 PLAYER_CLIENT_PROFILES: List[Optional[Dict[str, Any]]] = [
     {"youtube": {"player_client": ["tv_embedded"]}},
     {"youtube": {"player_client": ["android_vr"]}},
@@ -31,13 +30,19 @@ PLAYER_CLIENT_PROFILES: List[Optional[Dict[str, Any]]] = [
 def build_ytdlp_opts(
     base_opts: Optional[Dict[str, Any]] = None,
     client_profile: Optional[Dict[str, Any]] = None,
+    cookie_file: Optional[Path] = None,
 ) -> Dict[str, Any]:
-    """Builds consistent yt-dlp options with optional cookiefile and player client args."""
+    """Builds consistent yt-dlp options with optional per-request cookiefile, proxy, and player client args."""
     opts: Dict[str, Any] = dict(base_opts or {})
     if client_profile:
         opts["extractor_args"] = client_profile
-    if COOKIES_PATH.exists() and COOKIES_PATH.stat().st_size > 20:
-        opts["cookiefile"] = str(COOKIES_PATH)
+    active_cookie = cookie_file if (cookie_file and cookie_file.exists() and cookie_file.stat().st_size > 20) else None
+    if not active_cookie and COOKIES_PATH.exists() and COOKIES_PATH.stat().st_size > 20:
+        active_cookie = COOKIES_PATH
+    if active_cookie:
+        opts["cookiefile"] = str(active_cookie)
+    if YTDLP_PROXY:
+        opts["proxy"] = YTDLP_PROXY
     return opts
 
 
@@ -82,7 +87,13 @@ class VideoDownloader:
             return True
         return VideoDownloader.extract_video_id(clean) is not None
 
-    def get_video_info(self, url: str) -> Dict[str, Any]:
+    @staticmethod
+    def _has_cookies(cookie_file: Optional[Path]) -> bool:
+        if cookie_file and cookie_file.exists() and cookie_file.stat().st_size > 20:
+            return True
+        return COOKIES_PATH.exists() and COOKIES_PATH.stat().st_size > 20
+
+    def get_video_info(self, url: str, cookie_file: Optional[Path] = None) -> Dict[str, Any]:
         """Fetches real metadata without downloading the full video."""
         clean_url = url.strip()
         if clean_url.startswith("demo://") or clean_url in ("demo", "sample"):
@@ -91,11 +102,11 @@ class VideoDownloader:
         if clean_url.startswith("local://"):
             return self._get_local_video_info(clean_url)
 
-        if clean_url in self._info_cache:
+        has_cookies = self._has_cookies(cookie_file)
+        if clean_url in self._info_cache and not has_cookies:
             return self._info_cache[clean_url]
 
         last_err = None
-        has_cookies = COOKIES_PATH.exists() and COOKIES_PATH.stat().st_size > 20
         profiles = PLAYER_CLIENT_PROFILES[:2] if (IS_VERCEL and not has_cookies) else PLAYER_CLIENT_PROFILES
         sock_timeout = 5 if IS_VERCEL else 15
 
@@ -108,6 +119,7 @@ class VideoDownloader:
                     "socket_timeout": sock_timeout,
                 },
                 profile,
+                cookie_file=cookie_file,
             )
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -131,7 +143,6 @@ class VideoDownloader:
                 last_err = exc
                 continue
 
-        # Resilience fallback: YouTube oEmbed + watch HTML metadata when yt-dlp metadata is rate-limited
         fallback_data = self._fetch_oembed_fallback(clean_url)
         if fallback_data:
             self._info_cache[clean_url] = fallback_data
@@ -183,7 +194,7 @@ class VideoDownloader:
         return {
             "id": vid,
             "title": title or f"YouTube Video ({vid})",
-            "duration": max(60, duration),
+            "duration": duration if duration > 0 else 360,
             "channel": author or "YouTube Creator",
             "thumbnail": thumb,
             "subtitles": ["en"],
@@ -231,10 +242,10 @@ class VideoDownloader:
         start_sec: float,
         end_sec: float,
         output_filename: str,
+        cookie_file: Optional[Path] = None,
     ) -> Path:
         """
         Extracts [start_sec, end_sec] with BOTH video + audio accurately.
-        Supports local uploaded files, YouTube (cached -> yt-dlp download_ranges across client profiles -> direct FFmpeg -> full <=720p cache), and demo mode.
         """
         out_path = self.output_dir / output_filename
         if out_path.exists() and out_path.stat().st_size > 10000:
@@ -257,7 +268,6 @@ class VideoDownloader:
 
         video_id = self.extract_video_id(clean_url) or "yt"
 
-        # 0. Fast-path: cached source video already on disk
         cached_src = self.output_dir / f"src_{video_id}.mp4"
         if cached_src.exists() and cached_src.stat().st_size > 50000:
             self._cut_local_file(cached_src, start_clamped, duration, out_path)
@@ -266,23 +276,22 @@ class VideoDownloader:
 
         errors: List[str] = []
 
-        # 1. Primary strategy: yt-dlp download_ranges across reliable player clients (avoids 403 header mismatches)
-        ok, err_msg = self._try_ytdlp_range_download(clean_url, start_clamped, start_clamped + duration, out_path)
+        ok, err_msg = self._try_ytdlp_range_download(
+            clean_url, start_clamped, start_clamped + duration, out_path, cookie_file=cookie_file
+        )
         if ok:
             return out_path
         if err_msg:
             errors.append(err_msg)
 
-        # 2. Fallback strategy: Direct dual-stream FFmpeg HTTP range seek
-        ok, err_msg = self._try_direct_ffmpeg_cut(clean_url, start_clamped, duration, out_path)
+        ok, err_msg = self._try_direct_ffmpeg_cut(clean_url, start_clamped, duration, out_path, cookie_file=cookie_file)
         if ok:
             return out_path
         if err_msg:
             errors.append(err_msg)
 
-        # 3. Last-resort fallback: Download <=720p MP4 locally (skipped on 60s serverless lambdas)
         if not IS_VERCEL:
-            ok, err_msg = self._download_cached_source(clean_url, cached_src)
+            ok, err_msg = self._download_cached_source(clean_url, cached_src, cookie_file=cookie_file)
             if ok:
                 self._cut_local_file(cached_src, start_clamped, duration, out_path)
                 if out_path.exists() and out_path.stat().st_size > 10000:
@@ -293,14 +302,13 @@ class VideoDownloader:
         joined = " | ".join(errors)
         if "bot" in joined.lower() or "sign in" in joined.lower() or "cookies" in joined.lower():
             raise RuntimeError(
-                "YouTube blocked automated download from this server IP ('Sign in to confirm you're not a bot'). "
-                "Add YouTube cookies in Studio Settings, upload the MP4 video directly, or test with Instant Demo."
+                "YouTube blocked unauthenticated server downloads from this cloud IP. "
+                "Upload your MP4 file directly (cuts offline in-browser for any size), paste YouTube cookies in Settings, or use a Local Engine."
             )
 
         raise RuntimeError(
-            "Failed to stream or cut clip from YouTube. "
-            "The video may be restricted, age-gated, or rate-limited. "
-            "Try another public link or upload an MP4 video directly."
+            "Could not fetch this video stream from YouTube. "
+            "Try uploading the MP4 directly or testing with Instant Demo."
         )
 
     def _cut_local_file(self, src_path: Path, start_sec: float, duration: float, out_path: Path) -> None:
@@ -358,9 +366,11 @@ class VideoDownloader:
 
         return None, None, headers
 
-    def _try_direct_ffmpeg_cut(self, url: str, start_sec: float, duration: float, out_path: Path) -> Tuple[bool, Optional[str]]:
+    def _try_direct_ffmpeg_cut(
+        self, url: str, start_sec: float, duration: float, out_path: Path, cookie_file: Optional[Path] = None
+    ) -> Tuple[bool, Optional[str]]:
         last_err: Optional[str] = None
-        has_cookies = COOKIES_PATH.exists() and COOKIES_PATH.stat().st_size > 20
+        has_cookies = self._has_cookies(cookie_file)
         profiles = PLAYER_CLIENT_PROFILES[:1] if (IS_VERCEL and not has_cookies) else PLAYER_CLIENT_PROFILES[:4]
         sock_timeout = 5 if IS_VERCEL else 12
         for profile in profiles:
@@ -368,6 +378,7 @@ class VideoDownloader:
                 opts = build_ytdlp_opts(
                     {"quiet": True, "no_warnings": True, "skip_download": True, "socket_timeout": sock_timeout},
                     profile,
+                    cookie_file=cookie_file,
                 )
                 with yt_dlp.YoutubeDL(opts) as ydl:
                     info = ydl.extract_info(url, download=False)
@@ -404,20 +415,28 @@ class VideoDownloader:
                 out_path.unlink(missing_ok=True)
         return False, last_err
 
-    def _try_ytdlp_range_download(self, url: str, start_sec: float, end_sec: float, out_path: Path) -> Tuple[bool, Optional[str]]:
+    def _try_ytdlp_range_download(
+        self, url: str, start_sec: float, end_sec: float, out_path: Path, cookie_file: Optional[Path] = None
+    ) -> Tuple[bool, Optional[str]]:
         last_err: Optional[str] = None
         stem_tmpl = str(out_path.with_suffix(""))
-        has_cookies = COOKIES_PATH.exists() and COOKIES_PATH.stat().st_size > 20
+        has_cookies = self._has_cookies(cookie_file)
         profiles = PLAYER_CLIENT_PROFILES[:2] if (IS_VERCEL and not has_cookies) else PLAYER_CLIENT_PROFILES
         sock_timeout = 6 if IS_VERCEL else 15
+        fmt_expr = (
+            "best[height<=480][ext=mp4]/bestvideo[height<=480][vcodec^=avc1]+bestaudio/best[height<=480]/best"
+            if IS_VERCEL
+            else "bestvideo[height<=720][vcodec^=avc1]+bestaudio/bestvideo[height<=720]+bestaudio/best[height<=720]/best"
+        )
         for profile in profiles:
             try:
                 ydl_opts = build_ytdlp_opts(
                     {
-                        "format": "bestvideo[height<=720][vcodec^=avc1]+bestaudio/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+                        "format": fmt_expr,
                         "ffmpeg_location": FFMPEG_PATH,
                         "download_ranges": download_range_func(None, [(max(0.0, start_sec), end_sec)]),
-                        "force_keyframes_at_cuts": True,
+                        "force_keyframes_at_cuts": not IS_VERCEL,
+                        "concurrent_fragment_downloads": 4,
                         "merge_output_format": "mp4",
                         "outtmpl": f"{stem_tmpl}.%(ext)s",
                         "quiet": True,
@@ -425,6 +444,7 @@ class VideoDownloader:
                         "socket_timeout": sock_timeout,
                     },
                     profile,
+                    cookie_file=cookie_file,
                 )
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.download([url])
@@ -441,7 +461,9 @@ class VideoDownloader:
                     leftover.unlink(missing_ok=True)
         return False, last_err
 
-    def _download_cached_source(self, url: str, cached_src: Path) -> Tuple[bool, Optional[str]]:
+    def _download_cached_source(
+        self, url: str, cached_src: Path, cookie_file: Optional[Path] = None
+    ) -> Tuple[bool, Optional[str]]:
         last_err: Optional[str] = None
         for profile in PLAYER_CLIENT_PROFILES[:4]:
             try:
@@ -456,6 +478,7 @@ class VideoDownloader:
                         "socket_timeout": 15,
                     },
                     profile,
+                    cookie_file=cookie_file,
                 )
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     ydl.download([url])
@@ -467,14 +490,10 @@ class VideoDownloader:
         return False, last_err
 
     def _generate_synthetic_video(self, start_sec: float, end_sec: float, dest: Path, label: str) -> Path:
-        """
-        Generates a clean animated studio demo video with soft harmonic audio
-        for offline demos & tests.
-        """
         duration = max(1.0, float(end_sec) - float(start_sec))
         vf = (
             "drawgrid=w=80:h=80:t=1:c=0x1e293b@0.45,"
-            "drawbox=x=0:y=320:w=1280:h=80:color=0x0071e3@0.14:t=fill"
+            "drawbox=x=0:y=320:w=1280:h=80:color=0x6f2cf3@0.14:t=fill"
         )
         cmd = [
             FFMPEG_PATH, "-y",
@@ -492,7 +511,6 @@ class VideoDownloader:
             fallback_candidates = [
                 BASE_DIR / "public" / "assets" / "sample_preview.mp4",
                 BASE_DIR / "frontend" / "dist" / "sample_preview.mp4",
-                BASE_DIR / "storage" / "clips" / "clip_1d2a9b0bb9.mp4",
             ]
             for cand in fallback_candidates:
                 if cand.exists() and cand.stat().st_size > 10000:
@@ -502,7 +520,6 @@ class VideoDownloader:
 
     @staticmethod
     def extract_waveform_peaks(media_path: Path, num_bars: int = 48) -> List[int]:
-        """Extracts real audio RMS amplitude percentages (15..100) from any video/audio file."""
         if not media_path.exists():
             return [32] * num_bars
         cmd = [

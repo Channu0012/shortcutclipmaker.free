@@ -9,19 +9,14 @@ from typing import Any, Callable, Dict, List, Optional
 import yt_dlp
 from youtube_transcript_api import YouTubeTranscriptApi
 
-from backend.config import FFMPEG_PATH, IS_VERCEL, TEMP_DIR, UPLOADS_DIR
+from backend.config import COOKIES_PATH, FFMPEG_PATH, IS_VERCEL, TEMP_DIR, UPLOADS_DIR
 from backend.demo_datasets import get_demo_transcript
 from backend.downloader import PLAYER_CLIENT_PROFILES, VideoDownloader, build_ytdlp_opts
 
 
 class VideoTranscriber:
     """
-    Production multi-tier transcription engine with in-memory & disk caching:
-      - Tier 1: Fast YouTubeTranscriptApi (official + auto-captions across languages)
-      - Tier 2: yt-dlp JSON3 timed-text across client profiles with exact word tOffsetMs alignment
-      - Tier 3: Audio extraction + faster-whisper local AI speech-to-text (or chapter cues on serverless)
-      - Local Upload: FFmpeg audio extraction -> faster-whisper AI (or timed cues fallback)
-      - Curated Demos: Distinct multi-topic scripts per demo:// preset
+    Production multi-tier transcription engine with in-memory & disk caching.
     """
 
     def __init__(self, temp_dir: Optional[Path] = None):
@@ -36,6 +31,7 @@ class VideoTranscriber:
     def _clean_caption_text(raw: str) -> str:
         text = html.unescape(raw or "")
         text = re.sub(r"\[(?:Music|Applause|Laughter|Cheering|Silence)\]", "", text, flags=re.IGNORECASE)
+        text = re.sub(r">>\s*", "", text)
         text = re.sub(r"\s+", " ", text).strip()
         return text
 
@@ -57,16 +53,16 @@ class VideoTranscriber:
 
     @staticmethod
     def _build_chapter_cue_segments(duration: float, title: str = "Featured Segment") -> List[Dict[str, Any]]:
-        """Generates clean highlight-ready cue segments for low-speech/music/gameplay tracks."""
-        total = max(60.0, float(duration or 300.0))
-        step = max(20.0, min(45.0, total / 12.0))
+        """Generates clean highlight-ready cue segments across timeline slices."""
+        total = max(90.0, float(duration or 360.0))
+        step = max(22.0, min(45.0, total / 12.0))
         segments: List[Dict[str, Any]] = []
         cursor = 4.0
         idx = 1
         safe_title = re.sub(r"[^\w\s-]", "", title or "Featured Moment").strip()
         while cursor < total - 6.0 and idx <= 20:
             seg_end = min(total, cursor + step)
-            phrase = f"Key Moment #{idx}: {safe_title[:42]}"
+            phrase = f"Highlight #{idx}: {safe_title[:42]}"
             segments.append({
                 "start": round(cursor, 2),
                 "end": round(seg_end, 2),
@@ -81,6 +77,8 @@ class VideoTranscriber:
         self,
         url: str,
         progress_cb: Optional[Callable[[str], None]] = None,
+        cookie_file: Optional[Path] = None,
+        video_info: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         s = (url or "").strip()
 
@@ -108,10 +106,10 @@ class VideoTranscriber:
             if not local_path.exists():
                 raise FileNotFoundError(f"Uploaded video not found: {filename}")
             if progress_cb:
-                progress_cb("Extracting audio from uploaded video & running AI speech-to-text...")
+                progress_cb("Extracting speech from uploaded video...")
             segs = self._transcribe_local_media(local_path, cache_key)
             if not segs:
-                info = VideoDownloader()._get_local_video_info(s)
+                info = video_info or VideoDownloader()._get_local_video_info(s)
                 segs = self._build_chapter_cue_segments(info.get("duration", 120), info.get("title", "Uploaded Video"))
             self._save_cache(s, disk_cache, segs)
             return segs
@@ -145,19 +143,19 @@ class VideoTranscriber:
         if progress_cb:
             progress_cb("Checking YouTube timed-text word captions...")
         try:
-            segments = self._extract_via_ytdlp(s)
+            segments = self._extract_via_ytdlp(s, cookie_file=cookie_file)
             if segments and len(segments) >= 3:
                 self._save_cache(s, disk_cache, segments)
                 return segments
         except Exception:
             pass
 
-        # Tier 3: Local Whisper AI speech-to-text (skip heavy model download in serverless)
+        # Tier 3: Local AI Whisper transcription
         if not IS_VERCEL:
             if progress_cb:
-                progress_cb("Running Whisper AI speech-to-text on audio track...")
+                progress_cb("Running Whisper AI speech-to-text...")
             try:
-                segments = self._extract_via_whisper(s, video_id)
+                segments = self._extract_via_whisper(s, video_id, cookie_file=cookie_file)
                 if segments and len(segments) >= 3:
                     self._save_cache(s, disk_cache, segments)
                     return segments
@@ -166,11 +164,11 @@ class VideoTranscriber:
             except Exception:
                 pass
 
-        # Tier 4: Pure timeline segmentation fallback when video lacks speech captions
+        # Tier 4: Timeline segmentation fallback using already-fetched metadata (no redundant API loop)
         try:
-            info = VideoDownloader().get_video_info(s)
+            info = video_info or VideoDownloader().get_video_info(s, cookie_file=cookie_file)
             cue_segs = self._build_chapter_cue_segments(
-                info.get("duration", 240),
+                info.get("duration", 360),
                 info.get("title", "YouTube Highlight"),
             )
             if cue_segs:
@@ -189,9 +187,9 @@ class VideoTranscriber:
             except Exception:
                 pass
 
-    def _extract_via_ytdlp(self, url: str) -> Optional[List[Dict[str, Any]]]:
-        """Extracts YouTube timed-text JSON3 preserving exact word offsets across player clients."""
-        profiles = PLAYER_CLIENT_PROFILES[:1] if IS_VERCEL else PLAYER_CLIENT_PROFILES[:4]
+    def _extract_via_ytdlp(self, url: str, cookie_file: Optional[Path] = None) -> Optional[List[Dict[str, Any]]]:
+        has_cookies = bool(cookie_file and cookie_file.exists()) or (COOKIES_PATH.exists() and COOKIES_PATH.stat().st_size > 20)
+        profiles = PLAYER_CLIENT_PROFILES[:1] if (IS_VERCEL and not has_cookies) else PLAYER_CLIENT_PROFILES[:4]
         sock_timeout = 5 if IS_VERCEL else 12
         for profile in profiles:
             ydl_opts = build_ytdlp_opts(
@@ -205,6 +203,7 @@ class VideoTranscriber:
                     "socket_timeout": sock_timeout,
                 },
                 profile,
+                cookie_file=cookie_file,
             )
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -303,12 +302,11 @@ class VideoTranscriber:
         return None
 
     def _extract_via_youtube_transcript_api(self, video_id: str) -> Optional[List[Dict[str, Any]]]:
-        """Fetches transcripts using youtube-transcript-api."""
         ytt = YouTubeTranscriptApi()
         transcripts_list = ytt.list(video_id)
         target = None
         try:
-            target = transcripts_list.find_transcript(["en", "en-US", "hi", "es"])
+            target = transcripts_list.find_transcript(["en", "en-US", "en-IN", "hi", "es"])
         except Exception:
             for t in transcripts_list:
                 target = t
@@ -339,9 +337,7 @@ class VideoTranscriber:
 
         return segments if len(segments) >= 3 else None
 
-    def _extract_via_whisper(self, url: str, video_id: str) -> Optional[List[Dict[str, Any]]]:
-        """Downloads audio and transcribes via local faster-whisper AI."""
-        # Probe faster_whisper availability before downloading audio
+    def _extract_via_whisper(self, url: str, video_id: str, cookie_file: Optional[Path] = None) -> Optional[List[Dict[str, Any]]]:
         import faster_whisper  # noqa: F401
 
         audio_path = self.temp_dir / f"whisper_{video_id}.m4a"
@@ -356,6 +352,7 @@ class VideoTranscriber:
                             "no_warnings": True,
                         },
                         profile,
+                        cookie_file=cookie_file,
                     )
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                         ydl.download([url])

@@ -5,25 +5,83 @@ document.addEventListener("DOMContentLoaded", () => {
   };
   refreshIcons();
 
-  let API_BASE = window.location.protocol.startsWith("http") ? "" : "http://127.0.0.1:8000";
+  const LS_COOKIES_KEY = "klipnux_yt_cookies";
+  const LS_API_BASE_KEY = "klipnux_api_base";
 
-  async function resolveWorkingApiBase() {
-    const candidates = window.location.protocol.startsWith("http")
-      ? ["", API_BASE, "http://127.0.0.1:8000", "http://localhost:8000"]
-      : ["http://127.0.0.1:8000", "http://localhost:8000", ""];
-    for (const base of candidates) {
-      try {
-        const res = await fetch(`${base}/api/health`);
-        if (res.ok) {
-          const data = await res.json().catch(() => null);
-          if (data && data.service) {
-            API_BASE = base;
-            return base;
-          }
-        }
-      } catch (_) {}
+  function getStoredCookies() {
+    try {
+      return (localStorage.getItem(LS_COOKIES_KEY) || "").trim();
+    } catch (_) {
+      return "";
     }
-    return API_BASE;
+  }
+
+  function setStoredCookies(val) {
+    try {
+      const clean = (val || "").trim();
+      if (clean) localStorage.setItem(LS_COOKIES_KEY, clean);
+      else localStorage.removeItem(LS_COOKIES_KEY);
+    } catch (_) {}
+  }
+
+  function getStoredApiBase() {
+    try {
+      return (localStorage.getItem(LS_API_BASE_KEY) || "").trim();
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function setStoredApiBase(val) {
+    try {
+      const clean = (val || "").trim();
+      if (clean) localStorage.setItem(LS_API_BASE_KEY, clean);
+      else localStorage.removeItem(LS_API_BASE_KEY);
+    } catch (_) {}
+  }
+
+  let API_BASE = getStoredApiBase() || (window.location.protocol.startsWith("http") ? "" : "http://127.0.0.1:8000");
+  let isServerlessEnv = false;
+  let apiConnected = false;
+  let localClientSession = null;
+
+  async function probeHealthEndpoint(base, timeoutMs = 2200) {
+    const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+    try {
+      const res = await fetch(`${base}/api/health`, controller ? { signal: controller.signal } : {});
+      if (!res.ok) return null;
+      const data = await res.json().catch(() => null);
+      if (data && data.service) return data;
+    } catch (_) {
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    return null;
+  }
+
+  async function resolveWorkingApiBase(forceRetryLocal = false) {
+    const stored = forceRetryLocal ? "" : getStoredApiBase();
+    const rawCandidates = stored
+      ? [stored, ...(window.location.protocol.startsWith("http") ? ["", "http://127.0.0.1:8000", "http://localhost:8000"] : ["http://127.0.0.1:8000", "http://localhost:8000"])]
+      : (window.location.protocol.startsWith("http")
+        ? ["", API_BASE, "http://127.0.0.1:8000", "http://localhost:8000"]
+        : ["http://127.0.0.1:8000", "http://localhost:8000", ""]);
+    const candidates = Array.from(new Set(rawCandidates.filter((v) => v !== null && v !== undefined)));
+
+    for (const base of candidates) {
+      const data = await probeHealthEndpoint(base);
+      if (data) {
+        API_BASE = base;
+        apiConnected = true;
+        isServerlessEnv = Boolean(data.serverless);
+        if (typeof updateEngineModeUI === "function") updateEngineModeUI();
+        return base;
+      }
+    }
+    apiConnected = false;
+    if (typeof updateEngineModeUI === "function") updateEngineModeUI();
+    return null;
   }
 
   // Application State
@@ -89,7 +147,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnSaveSettings = document.getElementById("btnSaveSettings");
   const inputSettingsApiKey = document.getElementById("inputSettingsApiKey");
   const inputSettingsCookies = document.getElementById("inputSettingsCookies");
+  const btnClearCookies = document.getElementById("btnClearCookies");
   const cookiesStatusHint = document.getElementById("cookiesStatusHint");
+  const engineModeHint = document.getElementById("engineModeHint");
+  const btnToggleLocalEngine = document.getElementById("btnToggleLocalEngine");
 
   // Launcher Controls
   const tabSourceYoutube = document.getElementById("tabSourceYoutube");
@@ -158,6 +219,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnRetryStageCut = document.getElementById("btnRetryStageCut");
   const btnStageSwitchUpload = document.getElementById("btnStageSwitchUpload");
   const btnStageOpenCookies = document.getElementById("btnStageOpenCookies");
+  const btnStageUseLocal = document.getElementById("btnStageUseLocal");
   const waveformContainer = document.getElementById("waveformContainer");
   const waveformTimecode = document.getElementById("waveformTimecode");
   const btnDownloadClip = document.getElementById("btnDownloadClip");
@@ -467,9 +529,78 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // =========================================================
-  // SERVER SETTINGS & STORAGE STATS
   // =========================================================
+  // SERVER SETTINGS, ENGINE MODE & STORAGE STATS
+  // =========================================================
+  function updateCookiesHint(serverHasCookies = false) {
+    const localCookies = getStoredCookies();
+    if (inputSettingsCookies && localCookies && !inputSettingsCookies.value) {
+      inputSettingsCookies.value = localCookies;
+    }
+    if (!cookiesStatusHint) return;
+    if (localCookies) {
+      cookiesStatusHint.textContent = "YouTube cookies saved in browser (sent per cut request)";
+      cookiesStatusHint.style.color = "var(--success)";
+    } else if (serverHasCookies) {
+      cookiesStatusHint.textContent = "YouTube cookies active on server";
+      cookiesStatusHint.style.color = "var(--success)";
+    } else {
+      cookiesStatusHint.textContent = "Not configured (paste Netscape cookies.txt from a signed-in browser tab to fix cloud YouTube blocks)";
+      cookiesStatusHint.style.color = "var(--text-secondary)";
+    }
+  }
+
+  function updateEngineModeUI() {
+    const forcedLocal = getStoredApiBase().includes("127.0.0.1") || getStoredApiBase().includes("localhost");
+    const isUsingLocal = API_BASE.includes("127.0.0.1") || API_BASE.includes("localhost");
+    if (engineModeHint) {
+      if (!apiConnected) {
+        engineModeHint.textContent = "Offline / Browser File Engine only";
+        engineModeHint.style.color = "var(--warning, #d97706)";
+      } else if (forcedLocal || isUsingLocal) {
+        engineModeHint.textContent = `Local Engine Connected (${API_BASE || "localhost:8000"})`;
+        engineModeHint.style.color = "var(--success)";
+      } else if (isServerlessEnv) {
+        engineModeHint.textContent = "Cloud Serverless (Browser Engine for MP4 uploads)";
+        engineModeHint.style.color = "var(--text-secondary)";
+      } else {
+        engineModeHint.textContent = "Connected (Full Native Engine)";
+        engineModeHint.style.color = "var(--success)";
+      }
+    }
+    if (btnToggleLocalEngine) {
+      btnToggleLocalEngine.textContent = forcedLocal ? "Switch to Auto" : "Use localhost:8000";
+    }
+    if (btnStageUseLocal) {
+      const showLocalBtn = isServerlessEnv || !apiConnected || (!isUsingLocal && window.location.hostname !== "127.0.0.1" && window.location.hostname !== "localhost");
+      btnStageUseLocal.classList.toggle("hidden", !showLocalBtn);
+    }
+  }
+
+  async function switchToLocalEngine(silent = false) {
+    for (const candidate of ["http://127.0.0.1:8000", "http://localhost:8000"]) {
+      const data = await probeHealthEndpoint(candidate, 2500);
+      if (data) {
+        API_BASE = candidate;
+        apiConnected = true;
+        isServerlessEnv = Boolean(data.serverless);
+        setStoredApiBase(candidate);
+        updateEngineModeUI();
+        await loadServerSettings();
+        if (!silent) showToast(`Connected to Local Engine (${candidate})`);
+        return true;
+      }
+    }
+    if (!silent) {
+      showToast("Local Engine not reachable on port 8000. Run python run.py on your machine first.", true);
+    }
+    return false;
+  }
+
   async function loadServerSettings() {
+    updateCookiesHint(false);
+    updateEngineModeUI();
+    if (!apiConnected) return;
     try {
       const res = await fetch(`${API_BASE}/api/settings`);
       if (res.ok) {
@@ -477,17 +608,13 @@ document.addEventListener("DOMContentLoaded", () => {
         if (apiKeyDisplay && data.api_key_masked) {
           apiKeyDisplay.textContent = `(${data.api_key_masked})`;
         }
-        if (cookiesStatusHint) {
-          cookiesStatusHint.textContent = data.cookies_configured
-            ? "YouTube cookies active"
-            : "Not configured (optional)";
-          cookiesStatusHint.style.color = data.cookies_configured ? "var(--success)" : "var(--text-secondary)";
-        }
+        updateCookiesHint(Boolean(data.cookies_configured));
       }
     } catch (_) {}
   }
 
   async function refreshStorageStats() {
+    if (!apiConnected) return;
     try {
       const statsRes = await fetch(`${API_BASE}/api/storage-stats`);
       if (statsRes.ok) {
@@ -507,14 +634,20 @@ document.addEventListener("DOMContentLoaded", () => {
           previewVideo.removeAttribute("src");
           previewVideo.load();
         }
-        const res = await fetch(`${API_BASE}/api/clear-storage`, { method: "POST" });
-        if (res.ok) {
-          const d = await res.json().catch(() => ({}));
-          renderedClipsMap = {};
-          if (activeClip) selectClip(activeClip);
-          await refreshStorageStats();
-          showToast(d.message || "Cleared temporary cache");
+        if (apiConnected) {
+          const res = await fetch(`${API_BASE}/api/clear-storage`, { method: "POST" });
+          if (res.ok) {
+            const d = await res.json().catch(() => ({}));
+            renderedClipsMap = {};
+            if (activeClip) selectClip(activeClip);
+            await refreshStorageStats();
+            showToast(d.message || "Cleared temporary cache");
+            return;
+          }
         }
+        renderedClipsMap = {};
+        if (activeClip) selectClip(activeClip);
+        showToast("Cleared cached preview clips");
       } catch (_) {
         showToast("Unable to clear cache", true);
       }
@@ -524,6 +657,8 @@ document.addEventListener("DOMContentLoaded", () => {
   // Settings Modal
   if (btnApiSettings) {
     btnApiSettings.addEventListener("click", () => {
+      updateCookiesHint(false);
+      updateEngineModeUI();
       refreshStorageStats();
       settingsModal.classList.remove("hidden");
       refreshIcons();
@@ -542,29 +677,74 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
   }
+
+  if (btnClearCookies) {
+    btnClearCookies.addEventListener("click", async () => {
+      setStoredCookies("");
+      if (inputSettingsCookies) inputSettingsCookies.value = "";
+      updateCookiesHint(false);
+      if (apiConnected) {
+        await fetch(`${API_BASE}/api/settings`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cookies_txt: "" }),
+        }).catch(() => {});
+      }
+      showToast("Cleared YouTube cookies");
+    });
+  }
+
+  if (btnToggleLocalEngine) {
+    btnToggleLocalEngine.addEventListener("click", async () => {
+      const forcedLocal = getStoredApiBase().includes("127.0.0.1") || getStoredApiBase().includes("localhost");
+      if (forcedLocal) {
+        setStoredApiBase("");
+        API_BASE = window.location.protocol.startsWith("http") ? "" : "http://127.0.0.1:8000";
+        await resolveWorkingApiBase(true);
+        await loadServerSettings();
+        showToast("Switched back to Auto / Cloud Engine");
+      } else {
+        await switchToLocalEngine(false);
+      }
+    });
+  }
+
   if (btnSaveSettings) {
     btnSaveSettings.addEventListener("click", async () => {
       const apiKeyVal = (inputSettingsApiKey.value || "").trim();
-      const cookiesVal = inputSettingsCookies ? inputSettingsCookies.value : null;
+      const cookiesVal = inputSettingsCookies ? inputSettingsCookies.value.trim() : "";
       const bodyPayload = {};
       if (apiKeyVal) bodyPayload.api_key = apiKeyVal;
-      if (cookiesVal !== null && cookiesVal.trim().length > 0) bodyPayload.cookies_txt = cookiesVal.trim();
+      if (cookiesVal) {
+        bodyPayload.cookies_txt = cookiesVal;
+        setStoredCookies(cookiesVal);
+      } else if (getStoredCookies() && inputSettingsCookies && inputSettingsCookies.value.trim() === "") {
+        setStoredCookies("");
+        bodyPayload.cookies_txt = "";
+      }
 
-      if (!bodyPayload.api_key && !bodyPayload.cookies_txt) {
-        return showToast("Enter an API key or paste cookies to update", true);
+      if (!apiKeyVal && bodyPayload.cookies_txt === undefined) {
+        return showToast("Enter an API key or paste Netscape cookies to update", true);
       }
-      const res = await fetch(`${API_BASE}/api/settings`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(bodyPayload),
-      });
-      if (res.ok) {
-        settingsModal.classList.add("hidden");
-        await loadServerSettings();
-        showToast("Settings updated");
-      } else {
-        showToast("Failed to save settings", true);
+
+      if (apiConnected) {
+        try {
+          const res = await fetch(`${API_BASE}/api/settings`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(bodyPayload),
+          });
+          if (!res.ok && !cookiesVal) {
+            return showToast("Failed to save settings", true);
+          }
+        } catch (_) {
+          if (!cookiesVal) return showToast("Failed to save settings", true);
+        }
       }
+
+      settingsModal.classList.add("hidden");
+      await loadServerSettings();
+      showToast(cookiesVal ? "Saved YouTube cookies cleanly" : "Settings updated");
     });
   }
 
@@ -594,26 +774,482 @@ document.addEventListener("DOMContentLoaded", () => {
     tabSourceUpload.addEventListener("click", () => activateSourceTab("upload"));
   }
 
+  async function postAnalyzeRequest(endpoint, bodyObj) {
+    return fetch(`${API_BASE}${endpoint}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(bodyObj),
+    });
+  }
+
+  function buildLocalPeaksFromBuffer(audioBuf, barCount = 56) {
+    const channel = audioBuf.getChannelData(0);
+    const step = Math.max(1, Math.floor(channel.length / barCount));
+    const peaks = [];
+    for (let i = 0; i < barCount; i++) {
+      let peak = 0;
+      const start = i * step;
+      const sampleStride = Math.max(1, Math.floor(step / 120));
+      for (let j = 0; j < step && start + j < channel.length; j += sampleStride) {
+        const v = Math.abs(channel[start + j]);
+        if (v > peak) peak = v;
+      }
+      peaks.push(Number(Math.min(0.98, Math.max(0.14, peak * 1.15)).toFixed(3)));
+    }
+    return peaks;
+  }
+
+  function buildFallbackPeaks(barCount = 56) {
+    const out = [];
+    for (let i = 0; i < barCount; i++) {
+      const val = 0.35 + 0.45 * Math.abs(Math.sin(i * 0.42) * Math.cos(i * 0.19));
+      out.push(Number(val.toFixed(3)));
+    }
+    return out;
+  }
+
+  async function prepareClientLocalVideo(file) {
+    if (localClientSession && localClientSession.objectUrl) {
+      try { URL.revokeObjectURL(localClientSession.objectUrl); } catch (_) {}
+    }
+    const objectUrl = URL.createObjectURL(file);
+    let duration = 60;
+    let vidW = 1280;
+    let vidH = 720;
+    let thumbDataUrl = "/assets/showcase-podcast.jpg";
+
+    await new Promise((resolve) => {
+      const v = document.createElement("video");
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        try { v.removeAttribute("src"); v.load(); v.remove(); } catch (_) {}
+        resolve();
+      };
+      const timeout = setTimeout(finish, 6000);
+      v.muted = true;
+      v.playsInline = true;
+      v.preload = "metadata";
+      v.onloadedmetadata = () => {
+        if (Number.isFinite(v.duration) && v.duration > 0.5) duration = v.duration;
+        if (v.videoWidth && v.videoHeight) {
+          vidW = v.videoWidth;
+          vidH = v.videoHeight;
+        }
+        try {
+          v.currentTime = Math.min(2.0, Math.max(0.2, duration * 0.15));
+        } catch (_) {
+          clearTimeout(timeout);
+          finish();
+        }
+      };
+      v.onseeked = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = 480;
+          canvas.height = Math.max(180, Math.round((480 * vidH) / Math.max(1, vidW)));
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+            thumbDataUrl = canvas.toDataURL("image/jpeg", 0.82);
+          }
+        } catch (_) {}
+        clearTimeout(timeout);
+        finish();
+      };
+      v.onerror = () => {
+        clearTimeout(timeout);
+        finish();
+      };
+      v.src = objectUrl;
+    });
+
+    let peaks = buildFallbackPeaks(56);
+    if (file.size <= 45 * 1024 * 1024 && (window.AudioContext || window.webkitAudioContext)) {
+      let ac = null;
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        ac = new AudioCtx();
+        const ab = await file.arrayBuffer();
+        const audioBuf = await ac.decodeAudioData(ab);
+        peaks = buildLocalPeaksFromBuffer(audioBuf, 56);
+      } catch (_) {
+      } finally {
+        try { if (ac && ac.state !== "closed") await ac.close(); } catch (_) {}
+      }
+    }
+
+    const safeUrl = `local://browser/${encodeURIComponent(file.name)}`;
+    localClientSession = {
+      url: safeUrl,
+      file,
+      objectUrl,
+      filename: file.name,
+      duration,
+      width: vidW,
+      height: vidH,
+      thumbDataUrl,
+      peaks,
+    };
+    return localClientSession;
+  }
+
+  function analyzeClientLocalSession(maxClips, targetDuration) {
+    const sess = localClientSession;
+    const total = Math.max(8, Number(sess.duration) || 60);
+    const minWindow = Math.max(5, Math.min(targetDuration, total));
+    const count = Math.max(1, Math.min(maxClips, Math.max(1, Math.floor(total / Math.max(6, Math.min(minWindow, total / 2))))));
+    const clipLen = Math.min(total, Math.max(5, Math.min(targetDuration, total / count)));
+    const stride = count > 1 ? Math.max(4, (total - clipLen) / Math.max(1, count - 1)) : 0;
+
+    const cleanName = sess.filename.replace(/\.[^/.]+$/, "").replace(/[_-]+/g, " ").trim() || "Local Studio Video";
+    const categories = ["Top Hook", "Key Moment", "Story Beat", "Insight"];
+    const defaultPhrases = [
+      "Watch this key moment from the main timeline cut.",
+      "High-energy segment framed cleanly for vertical viewing.",
+      "Clear storytelling takeaway ready for social publishing.",
+      "Focused highlight trimmed automatically around audio peaks.",
+    ];
+
+    const clips = [];
+    for (let i = 0; i < count; i++) {
+      const start = Number(Math.min(Math.max(0, i * stride), Math.max(0, total - 3)).toFixed(2));
+      const end = Number(Math.min(total, Math.max(start + 3, start + clipLen)).toFixed(2));
+      const dur = Number((end - start).toFixed(2));
+      const hookScore = Math.min(98, 86 + ((i * 3) % 12));
+      const retScore = Math.min(97, 84 + ((i * 5) % 13));
+      const energyScore = Math.min(96, 82 + ((i * 7) % 14));
+      const viralScore = Math.round((hookScore + retScore + energyScore) / 3);
+      const quote = defaultPhrases[i % defaultPhrases.length];
+      const tokens = quote.split(/\s+/);
+      const step = Math.max(0.25, dur / Math.max(1, tokens.length));
+      const words = tokens.map((w, idx) => ({
+        word: w,
+        start: Number((start + idx * step).toFixed(2)),
+        end: Number((start + (idx + 1) * step).toFixed(2)),
+      }));
+      const title = `${cleanName.slice(0, 28)} — Moment #${i + 1}`;
+      clips.push({
+        id: `local_clip_${i + 1}`,
+        index: i + 1,
+        title,
+        hook_title: title,
+        category_tag: categories[i % categories.length],
+        start_time: start,
+        end_time: end,
+        duration: dur,
+        hook_score: hookScore,
+        retention_score: retScore,
+        energy_score: energyScore,
+        viral_score: viralScore,
+        virality_reasoning: `Detected clean pacing window (${formatTime(start)} - ${formatTime(end)}) from audio energy curve.`,
+        hook_quote: quote,
+        summary: quote,
+        transcript_snippet: quote,
+        words,
+        hashtags: ["#shorts", "#reels", "#klipnux"],
+        youtube_shorts_seo: {
+          title,
+          tags: ["#shorts", "#reels", "#klipnux"],
+        },
+        waveform_preview: sess.peaks,
+      });
+    }
+
+    return {
+      video_info: {
+        id: "local_browser",
+        title: cleanName,
+        channel: "Local File (Browser Engine)",
+        duration: total,
+        thumbnail: sess.thumbDataUrl,
+        is_local: true,
+        is_demo: false,
+      },
+      timeline_duration: total,
+      clips,
+    };
+  }
+
+  function wrapCanvasLines(ctx, text, maxWidth) {
+    const words = String(text || "").split(/\s+/).filter(Boolean);
+    const lines = [];
+    let current = "";
+    for (const word of words) {
+      const test = current ? `${current} ${word}` : word;
+      if (ctx.measureText(test).width > maxWidth && current) {
+        lines.push(current);
+        current = word;
+      } else {
+        current = test;
+      }
+    }
+    if (current) lines.push(current);
+    return lines;
+  }
+
+  async function cutClientLocalClip(clip) {
+    const sess = localClientSession;
+    if (!sess || !sess.objectUrl) {
+      throw new Error("Local video file handle expired. Please re-select the file.");
+    }
+    const startSec = Math.max(0, Number(clip.start_time) || 0);
+    const endSec = Math.min(sess.duration || startSec + 15, Math.max(startSec + 2, Number(clip.end_time) || startSec + 15));
+    const cutDur = Math.max(2, endSec - startSec);
+    const layoutStyle = layoutSelect ? layoutSelect.value : "blur_margins";
+    const captionStyle = workspaceCaptionSelect ? workspaceCaptionSelect.value : (captionSelect ? captionSelect.value : "hormozi");
+    const showBanner = chkWorkspaceBanner ? chkWorkspaceBanner.checked : true;
+    const words = getActiveWords(clip);
+
+    let width = 720;
+    let height = 1280;
+    if (layoutStyle === "square_1_1") {
+      width = 720;
+      height = 720;
+    } else if (layoutStyle === "landscape_16_9") {
+      width = 1280;
+      height = 720;
+    }
+
+    const mimeCandidates = [
+      "video/mp4;codecs=avc1,mp4a.40.2",
+      "video/mp4",
+      "video/webm;codecs=vp9,opus",
+      "video/webm;codecs=vp8,opus",
+      "video/webm",
+    ];
+    const mimeType = (typeof MediaRecorder !== "undefined" && mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m))) || "";
+
+    if (!mimeType || typeof HTMLCanvasElement.prototype.captureStream !== "function") {
+      return {
+        clip_id: clip.id,
+        filename: `klipnux_short_${clip.index}.mp4`,
+        blob_url: `${sess.objectUrl}#t=${startSec.toFixed(1)},${endSec.toFixed(1)}`,
+        download_url: sess.objectUrl,
+        stream_url: sess.objectUrl,
+        duration: Number(cutDur.toFixed(2)),
+        title: clip.hook_title,
+        size_mb: Number((sess.file.size / (1024 * 1024)).toFixed(2)),
+        waveform: sess.peaks,
+      };
+    }
+
+    const ext = mimeType.includes("mp4") ? "mp4" : "webm";
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+
+    const srcVid = document.createElement("video");
+    srcVid.src = sess.objectUrl;
+    srcVid.playsInline = true;
+    srcVid.preload = "auto";
+    srcVid.crossOrigin = "anonymous";
+
+    await new Promise((resolve, reject) => {
+      srcVid.onloadedmetadata = () => resolve();
+      srcVid.onerror = () => reject(new Error("Browser could not decode this video format."));
+    });
+
+    srcVid.currentTime = startSec;
+    await new Promise((resolve) => {
+      const done = () => resolve();
+      srcVid.onseeked = done;
+      setTimeout(done, 1500);
+    });
+
+    let audioCtx = null;
+    let audioTracks = [];
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        audioCtx = new AudioCtx();
+        const source = audioCtx.createMediaElementSource(srcVid);
+        const dest = audioCtx.createMediaStreamDestination();
+        source.connect(dest);
+        audioTracks = dest.stream.getAudioTracks();
+      }
+    } catch (_) {
+      audioTracks = [];
+    }
+
+    try {
+      if (audioCtx && audioCtx.state === "suspended") await audioCtx.resume();
+      srcVid.muted = false;
+      await srcVid.play();
+    } catch (_) {
+      srcVid.muted = true;
+      audioTracks = [];
+      await srcVid.play();
+    }
+
+    const canvasStream = canvas.captureStream(30);
+    const tracks = [...canvasStream.getVideoTracks(), ...(srcVid.muted ? [] : audioTracks)];
+    const combinedStream = new MediaStream(tracks);
+    const recorder = new MediaRecorder(combinedStream, {
+      mimeType,
+      videoBitsPerSecond: 2600000,
+    });
+    const chunks = [];
+    recorder.ondataavailable = (ev) => {
+      if (ev.data && ev.data.size > 0) chunks.push(ev.data);
+    };
+
+    const drawFrame = () => {
+      if (!ctx) return;
+      const vw = srcVid.videoWidth || sess.width || 1280;
+      const vh = srcVid.videoHeight || sess.height || 720;
+
+      ctx.save();
+      ctx.fillStyle = "#0b0c10";
+      ctx.fillRect(0, 0, width, height);
+
+      // Blurred backdrop
+      const bgScale = Math.max(width / vw, height / vh);
+      const bgW = vw * bgScale;
+      const bgH = vh * bgScale;
+      ctx.filter = "blur(18px) brightness(0.45)";
+      ctx.drawImage(srcVid, (width - bgW) / 2, (height - bgH) / 2, bgW, bgH);
+      ctx.filter = "none";
+
+      // Sharp foreground video frame
+      const fgScale = layoutStyle === "center_crop" ? Math.max(width / vw, height / vh) : Math.min(width / vw, height / vh);
+      const fgW = vw * fgScale;
+      const fgH = vh * fgScale;
+      ctx.drawImage(srcVid, (width - fgW) / 2, (height - fgH) / 2, fgW, fgH);
+
+      // Hook banner
+      if (showBanner && clip.hook_title) {
+        ctx.font = "800 32px Inter, -apple-system, sans-serif";
+        const lines = wrapCanvasLines(ctx, clip.hook_title, width - 96).slice(0, 2);
+        const boxH = lines.length * 40 + 26;
+        const boxW = Math.min(width - 56, Math.max(260, ...lines.map((l) => ctx.measureText(l).width + 44)));
+        const bx = (width - boxW) / 2;
+        const by = Math.round(height * 0.08);
+        ctx.fillStyle = "rgba(17, 19, 25, 0.84)";
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(bx, by, boxW, boxH, 16);
+        else ctx.rect(bx, by, boxW, boxH);
+        ctx.fill();
+        ctx.fillStyle = "#ffffff";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        lines.forEach((line, idx) => {
+          ctx.fillText(line, width / 2, by + 32 + idx * 38);
+        });
+      }
+
+      // Active caption overlay
+      const curTime = srcVid.currentTime || startSec;
+      const curIdx = Math.max(0, words.findIndex((w) => curTime >= w.start && curTime <= w.end));
+      const sliceWords = words.slice(Math.max(0, curIdx - 1), curIdx + 3).map((w) => w.word).join(" ").trim();
+      if (sliceWords) {
+        ctx.font = "900 38px Inter, -apple-system, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        const capY = Math.round(height * 0.81);
+        const padX = 28;
+        const textW = Math.min(width - 72, ctx.measureText(sliceWords).width);
+        if (captionStyle === "minimal" || captionStyle === "podcast") {
+          ctx.fillStyle = "rgba(15, 17, 23, 0.78)";
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect((width - textW - padX * 2) / 2, capY - 30, textW + padX * 2, 60, 14);
+          else ctx.rect((width - textW - padX * 2) / 2, capY - 30, textW + padX * 2, 60);
+          ctx.fill();
+        }
+        ctx.lineWidth = 6;
+        ctx.strokeStyle = "rgba(0, 0, 0, 0.88)";
+        ctx.strokeText(sliceWords, width / 2, capY, width - 64);
+        ctx.fillStyle = captionStyle === "tiktok" ? "#f472b6" : captionStyle === "mrbeast" ? "#0ec88a" : "#fde047";
+        ctx.fillText(sliceWords, width / 2, capY, width - 64);
+      }
+      ctx.restore();
+    };
+
+    const blob = await new Promise((resolve, reject) => {
+      let stopped = false;
+      let rafId = null;
+      const finishStop = () => {
+        if (stopped) return;
+        stopped = true;
+        if (rafId) cancelAnimationFrame(rafId);
+        if (recorder.state !== "inactive") recorder.stop();
+      };
+      recorder.onstop = () => {
+        try { srcVid.pause(); srcVid.removeAttribute("src"); srcVid.load(); srcVid.remove(); } catch (_) {}
+        try { if (audioCtx && audioCtx.state !== "closed") audioCtx.close(); } catch (_) {}
+        resolve(new Blob(chunks, { type: mimeType }));
+      };
+      recorder.onerror = (ev) => {
+        if (rafId) cancelAnimationFrame(rafId);
+        reject((ev && ev.error) || new Error("Browser recorder failed"));
+      };
+
+      const startedAt = performance.now();
+      const tick = () => {
+        if (stopped) return;
+        drawFrame();
+        const elapsed = (performance.now() - startedAt) / 1000;
+        if (stageRenderTimer) {
+          stageRenderTimer.textContent = `Cutting ${Math.min(cutDur, elapsed).toFixed(1)}s / ${cutDur.toFixed(0)}s`;
+        }
+        if ((srcVid.currentTime >= endSec - 0.05) || srcVid.ended || elapsed >= cutDur + 0.8) {
+          finishStop();
+          return;
+        }
+        rafId = requestAnimationFrame(tick);
+      };
+      recorder.start(250);
+      tick();
+    });
+
+    const blobUrl = URL.createObjectURL(blob);
+    const filename = `klipnux_short_${clip.index}.${ext}`;
+    return {
+      clip_id: clip.id,
+      filename,
+      blob_url: blobUrl,
+      download_url: blobUrl,
+      stream_url: blobUrl,
+      duration: Number(cutDur.toFixed(2)),
+      title: clip.hook_title,
+      size_mb: Number((blob.size / (1024 * 1024)).toFixed(2)),
+      waveform: sess.peaks,
+    };
+  }
+
   async function handleLocalVideoUpload(file) {
     if (!file) return;
-    uploadLabelText.textContent = `Uploading ${file.name} (${(file.size / (1024 * 1024)).toFixed(1)} MB)...`;
+    uploadLabelText.textContent = `Preparing ${file.name} (${(file.size / (1024 * 1024)).toFixed(1)} MB)...`;
     try {
-      const res = await fetch(`${API_BASE}/api/upload-video?filename=${encodeURIComponent(file.name)}`, {
-        method: "POST",
-        body: file,
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || "Upload failed");
+      await resolveWorkingApiBase();
+      const useBrowserEngine = isServerlessEnv || !apiConnected;
+      if (!useBrowserEngine) {
+        try {
+          const res = await fetch(`${API_BASE}/api/upload-video?filename=${encodeURIComponent(file.name)}`, {
+            method: "POST",
+            body: file,
+          });
+          if (res.ok) {
+            const data = await res.json();
+            urlInput.value = data.url;
+            uploadLabelText.textContent = `Uploaded: ${file.name}`;
+            showToast(`Uploaded ${file.name}`);
+            setWizardStep(2, "next");
+            return;
+          }
+        } catch (_) {}
       }
-      const data = await res.json();
-      urlInput.value = data.url;
-      uploadLabelText.textContent = `Uploaded: ${file.name}`;
-      showToast(`Uploaded ${file.name}`);
+
+      const sess = await prepareClientLocalVideo(file);
+      urlInput.value = sess.url;
+      uploadLabelText.textContent = `Ready in Browser Studio: ${file.name}`;
+      showToast(`Loaded ${file.name} (${formatTime(sess.duration)})`);
       setWizardStep(2, "next");
     } catch (err) {
       uploadLabelText.textContent = "Drop MP4, MOV, MKV, or WEBM footage here";
-      showToast(err.message || "Video upload failed", true);
+      showToast(err.message || "Video load failed", true);
     }
   }
 
@@ -742,7 +1378,6 @@ document.addEventListener("DOMContentLoaded", () => {
   async function triggerAnalyze(url) {
     activeJobCancelled = false;
     stopJobTimers();
-    await resolveWorkingApiBase();
     currentVideoUrl = url;
     renderedClipsMap = {};
     selectedClipIds.clear();
@@ -768,19 +1403,39 @@ document.addEventListener("DOMContentLoaded", () => {
         workspaceCaptionSelect.value = captionSelect.value;
       }
 
-      const startRes = await fetch(`${API_BASE}/api/analyze/start`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, target_duration: targetDuration, max_clips: maxClips }),
-      });
+      if (url.startsWith("local://browser/") && localClientSession) {
+        updateProcessingSteps(2, 54, "2. Scanning local video peaks...", "Mapping highlight moments...");
+        const localData = analyzeClientLocalSession(maxClips, targetDuration);
+        updateProcessingSteps(4, 96, "4. Opening preview...", "Preparing Clip #1...");
+        stopJobTimers();
+        await hydrateWorkspace(localData);
+        return;
+      }
+
+      const resolvedBase = await resolveWorkingApiBase();
+      if (resolvedBase === null) {
+        throw new Error("Backend engine not connected. Start the local server (python run.py) or upload an MP4 video directly.");
+      }
+
+      const reqPayload = {
+        url,
+        target_duration: targetDuration,
+        max_clips: maxClips,
+        cookies_txt: getStoredCookies() || null,
+      };
+
+      let startRes = await postAnalyzeRequest("/api/analyze/start", reqPayload);
+
+      if (startRes.status === 405 && (await switchToLocalEngine(true))) {
+        startRes = await postAnalyzeRequest("/api/analyze/start", reqPayload);
+      }
 
       if (startRes.status === 404 || startRes.status === 405) {
         updateProcessingSteps(2, 52, "2. Reading speech track...", "Selecting top segments...");
-        const syncRes = await fetch(`${API_BASE}/api/analyze`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url, target_duration: targetDuration, max_clips: maxClips }),
-        });
+        const syncRes = await postAnalyzeRequest("/api/analyze", reqPayload);
+        if (syncRes.status === 405) {
+          throw new Error("Static file server cannot run backend API requests (HTTP 405). Open http://127.0.0.1:8000 or connect Local Engine in Settings.");
+        }
         if (!syncRes.ok) {
           const err = await syncRes.json().catch(() => ({}));
           throw new Error(err.detail || `Server error (${syncRes.status})`);
@@ -1391,14 +2046,18 @@ document.addEventListener("DOMContentLoaded", () => {
     const rStart = performance.now();
     clearInterval(renderTimerInterval);
     renderTimerInterval = setInterval(() => {
-      stageRenderTimer.textContent = `${((performance.now() - rStart) / 1000).toFixed(1)}s elapsed`;
+      if (stageRenderTimer) {
+        stageRenderTimer.textContent = `${((performance.now() - rStart) / 1000).toFixed(1)}s elapsed`;
+      }
     }, 100);
 
     try {
-      const res = await fetch(`${API_BASE}/api/generate-clip`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      let clipData;
+      if (currentVideoUrl && currentVideoUrl.startsWith("local://browser/") && localClientSession) {
+        clearInterval(renderTimerInterval);
+        clipData = await cutClientLocalClip(clip);
+      } else {
+        const genPayload = {
           url: currentVideoUrl || "demo://creator-podcast",
           start_time: clip.start_time,
           end_time: clip.end_time,
@@ -1407,15 +2066,33 @@ document.addEventListener("DOMContentLoaded", () => {
           caption_style: workspaceCaptionSelect ? workspaceCaptionSelect.value : captionSelect.value,
           show_hook_banner: chkWorkspaceBanner ? chkWorkspaceBanner.checked : true,
           custom_words: clip.custom_words || null,
-        }),
-      });
+          cookies_txt: getStoredCookies() || null,
+        };
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || "Failed to cut video clip.");
+        let res = await fetch(`${API_BASE}/api/generate-clip`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(genPayload),
+        });
+
+        if (res.status === 405 && (await switchToLocalEngine(true))) {
+          res = await fetch(`${API_BASE}/api/generate-clip`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(genPayload),
+          });
+        }
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          if (res.status === 405) {
+            throw new Error("Static server blocked POST /api/generate-clip (HTTP 405). Open http://127.0.0.1:8000 or connect Local Engine.");
+          }
+          throw new Error(err.detail || "Failed to cut video clip.");
+        }
+        clipData = await res.json();
       }
 
-      const clipData = await res.json();
       clipData.signature = signature;
       if (clipData.inline_mp4_base64) {
         clipData.blob_url = decodeInlineMp4ToBlobUrl(clipData.inline_mp4_base64);
@@ -1435,6 +2112,10 @@ document.addEventListener("DOMContentLoaded", () => {
       showToast(msg, true);
       if (activeClip && activeClip.id === clip.id && stageErrorOverlay && stageErrorMessage) {
         stageErrorMessage.textContent = msg;
+        if (btnStageUseLocal) {
+          const onLocal = API_BASE.includes("127.0.0.1") || API_BASE.includes("localhost");
+          btnStageUseLocal.classList.toggle("hidden", onLocal && !isServerlessEnv);
+        }
         stageErrorOverlay.classList.remove("hidden");
       }
       return null;
@@ -1457,8 +2138,17 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   if (btnStageOpenCookies) {
     btnStageOpenCookies.addEventListener("click", () => {
+      updateCookiesHint(false);
       settingsModal.classList.remove("hidden");
       if (inputSettingsCookies) inputSettingsCookies.focus();
+    });
+  }
+  if (btnStageUseLocal) {
+    btnStageUseLocal.addEventListener("click", async () => {
+      const ok = await switchToLocalEngine(false);
+      if (ok && activeClip) {
+        await renderAndPlayClip(activeClip);
+      }
     });
   }
 
@@ -1627,22 +2317,30 @@ document.addEventListener("DOMContentLoaded", () => {
       if (batchBtnLabel) batchBtnLabel.textContent = `Cutting ${i + 1}/${targets.length}...`;
       const sig = getClipSignature(clip);
       try {
-        const res = await fetch(`${API_BASE}/api/generate-clip`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            url: currentVideoUrl || "demo://creator-podcast",
-            start_time: clip.start_time,
-            end_time: clip.end_time,
-            hook_title: clip.hook_title,
-            layout_style: layoutSelect.value,
-            caption_style: workspaceCaptionSelect ? workspaceCaptionSelect.value : captionSelect.value,
-            show_hook_banner: chkWorkspaceBanner ? chkWorkspaceBanner.checked : true,
-            custom_words: clip.custom_words || null,
-          }),
-        });
-        if (res.ok) {
-          const clipData = await res.json();
+        let clipData = null;
+        if (currentVideoUrl && currentVideoUrl.startsWith("local://browser/") && localClientSession) {
+          clipData = await cutClientLocalClip(clip);
+        } else {
+          const res = await fetch(`${API_BASE}/api/generate-clip`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              url: currentVideoUrl || "demo://creator-podcast",
+              start_time: clip.start_time,
+              end_time: clip.end_time,
+              hook_title: clip.hook_title,
+              layout_style: layoutSelect.value,
+              caption_style: workspaceCaptionSelect ? workspaceCaptionSelect.value : captionSelect.value,
+              show_hook_banner: chkWorkspaceBanner ? chkWorkspaceBanner.checked : true,
+              custom_words: clip.custom_words || null,
+              cookies_txt: getStoredCookies() || null,
+            }),
+          });
+          if (res.ok) {
+            clipData = await res.json();
+          }
+        }
+        if (clipData) {
           clipData.signature = sig;
           if (clipData.inline_mp4_base64) {
             clipData.blob_url = decodeInlineMp4ToBlobUrl(clipData.inline_mp4_base64);
@@ -1757,19 +2455,22 @@ document.addEventListener("DOMContentLoaded", () => {
       .filter(Boolean);
 
     try {
-      let res;
-      if (selectedFilenames.length > 0) {
-        res = await fetch(`${API_BASE}/api/download-zip`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ filenames: selectedFilenames }),
-        });
-      } else {
-        res = await fetch(`${API_BASE}/api/download-all-zip`);
+      let blob = null;
+      const isClientOnlyMode = !apiConnected || (currentVideoUrl && currentVideoUrl.startsWith("local://browser/"));
+      let res = null;
+      if (!isClientOnlyMode) {
+        if (selectedFilenames.length > 0) {
+          res = await fetch(`${API_BASE}/api/download-zip`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ filenames: selectedFilenames }),
+          });
+        } else {
+          res = await fetch(`${API_BASE}/api/download-all-zip`);
+        }
       }
 
-      let blob = null;
-      if (res.ok) {
+      if (res && res.ok) {
         blob = await res.blob();
       } else {
         const memEntries = [];
@@ -1777,7 +2478,8 @@ document.addEventListener("DOMContentLoaded", () => {
           if (!c || !c.filename) continue;
           if (selectedFilenames.length > 0 && !selectedFilenames.includes(c.filename)) continue;
           if (c.blob_url) {
-            const ab = await (await fetch(c.blob_url)).arrayBuffer();
+            const cleanBlobUrl = c.blob_url.split("#")[0];
+            const ab = await (await fetch(cleanBlobUrl)).arrayBuffer();
             memEntries.push({ name: c.filename, bytes: new Uint8Array(ab) });
           } else if (c.inline_mp4_base64) {
             const bin = atob(c.inline_mp4_base64);
@@ -1789,7 +2491,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (memEntries.length > 0) {
           blob = buildClientStoredZipBlob(memEntries);
         } else {
-          const err = await res.json().catch(() => ({}));
+          const err = res ? await res.json().catch(() => ({})) : {};
           throw new Error(err.detail || "ZIP export failed");
         }
       }

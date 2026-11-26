@@ -1,9 +1,11 @@
 import base64
 import re
+import tempfile
 import threading
 import time
 import uuid
 import zipfile
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -21,24 +23,35 @@ from backend.transcriber import VideoTranscriber
 from backend.video_processor import VideoProcessor
 
 app = FastAPI(
-    title="Klipnux — AI Long-Form to Viral Clips Engine",
-    description="Automated AI clipping engine turning long YouTube & local videos into ready-to-post 9:16, 1:1, and 16:9 clips.",
-    version="3.1.0",
+    title="Klipnux — Video Clip Studio Engine",
+    description="Video clip engine turning long YouTube and local videos into ready-to-post 9:16, 1:1, and 16:9 clips.",
+    version="3.2.0",
 )
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_pna_and_cache_headers(request: Request, call_next):
+    response = await call_next(request)
+    # Allow explicit opt-in Local Engine bridge from HTTPS deployment (Chrome Private Network Access)
+    if request.headers.get("access-control-request-private-network") == "true":
+        response.headers["Access-Control-Allow-Private-Network"] = "true"
+    if request.url.path in ("/", "/index.html", "/app.js", "/style.css"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
+
 
 downloader = VideoDownloader()
 transcriber = VideoTranscriber()
 processor = VideoProcessor()
 
-# In-memory background job store for local multi-step progress telemetry
 ANALYSIS_JOBS: Dict[str, Dict[str, Any]] = {}
 JOBS_LOCK = threading.Lock()
 
@@ -48,6 +61,7 @@ class AnalyzeRequest(BaseModel):
     target_duration: int = Field(45, ge=15, le=360)
     max_clips: int = Field(12, ge=1, le=25)
     api_key: Optional[str] = None
+    cookies_txt: Optional[str] = None
 
 
 class GenerateClipRequest(BaseModel):
@@ -55,11 +69,12 @@ class GenerateClipRequest(BaseModel):
     start_time: float
     end_time: float
     hook_title: str
-    layout_style: str = "blur_margins"  # blur_margins, center_crop, split_screen, square_1_1, landscape_16_9
-    caption_style: str = "hormozi"      # hormozi, mrbeast, tiktok, neon, minimal, podcast
+    layout_style: str = "blur_margins"
+    caption_style: str = "hormozi"
     show_hook_banner: bool = True
     custom_words: Optional[List[Dict[str, Any]]] = None
     api_key: Optional[str] = None
+    cookies_txt: Optional[str] = None
 
 
 class BatchGenerateRequest(BaseModel):
@@ -69,6 +84,7 @@ class BatchGenerateRequest(BaseModel):
     caption_style: str = "hormozi"
     show_hook_banner: bool = True
     api_key: Optional[str] = None
+    cookies_txt: Optional[str] = None
 
 
 class ZipSelectionRequest(BaseModel):
@@ -80,47 +96,71 @@ class SettingsUpdate(BaseModel):
     cookies_txt: Optional[str] = None
 
 
+@contextmanager
+def _scoped_cookie_file(cookies_txt: Optional[str]):
+    """Writes stateless per-request Netscape cookies to a temp file safely deleted after request."""
+    clean = (cookies_txt or "").strip()
+    if not clean:
+        yield None
+        return
+    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", prefix="klip_ck_", dir=str(TEMP_DIR), delete=False, encoding="utf-8")
+    tmp_path = Path(tmp.name)
+    try:
+        tmp.write(clean + "\n")
+        tmp.close()
+        yield tmp_path
+    finally:
+        _safe_unlink(tmp_path)
+
+
 def _run_analysis_sync(
     url: str,
     target_duration: int,
     max_clips: int,
     progress_update: Optional[Any] = None,
+    cookies_txt: Optional[str] = None,
 ) -> Dict[str, Any]:
     clean_url = url.strip()
     if not VideoDownloader.is_valid_youtube_url(clean_url):
         raise ValueError("Please provide a valid YouTube URL, uploaded video, or preset demo.")
 
-    if progress_update:
-        progress_update(18, "1. Fetching Stream & Metadata...", "Connecting to video source and inspecting duration...")
-    info = downloader.get_video_info(clean_url)
-
-    def on_transcript_msg(msg: str) -> None:
+    with _scoped_cookie_file(cookies_txt) as ck_path:
         if progress_update:
-            progress_update(48, "2. Transcribing Speech Track...", msg)
+            progress_update(18, "1. Fetching Metadata...", "Connecting to video source and inspecting duration...")
+        info = downloader.get_video_info(clean_url, cookie_file=ck_path)
 
-    if progress_update:
-        progress_update(42, "2. Extracting Speech Transcript...", "Checking YouTube captions & word-level timestamps...")
-    segments = transcriber.get_transcript(clean_url, progress_cb=on_transcript_msg)
-    if not segments:
-        raise RuntimeError("No speech transcript could be retrieved for this video.")
+        def on_transcript_msg(msg: str) -> None:
+            if progress_update:
+                progress_update(48, "2. Reading Transcript...", msg)
 
-    if progress_update:
-        progress_update(78, "3. AI Viral Moment Discovery...", f"Scoring hooks, pacing cadence & punchlines for top {max_clips} clips...")
+        if progress_update:
+            progress_update(42, "2. Extracting Speech Transcript...", "Checking captions & word-level timestamps...")
+        segments = transcriber.get_transcript(
+            clean_url,
+            progress_cb=on_transcript_msg,
+            cookie_file=ck_path,
+            video_info=info,
+        )
+        if not segments:
+            raise RuntimeError("No speech transcript could be retrieved for this video.")
 
-    highlighter = ClipHighlighter(target_duration=target_duration)
-    clips = highlighter.find_highlights(segments, max_clips=max_clips)
+        if progress_update:
+            progress_update(78, "3. Scoring Moments...", f"Selecting top {max_clips} highlights...")
 
-    if progress_update:
-        progress_update(96, "4. Building Retention Heatmap...", f"Prepared {len(clips)} viral clips ready to cut.")
+        highlighter = ClipHighlighter(target_duration=target_duration)
+        clips = highlighter.find_highlights(segments, max_clips=max_clips)
 
-    return {
-        "url": clean_url,
-        "video_info": info,
-        "clips": clips,
-        "total_clips": len(clips),
-        "segments_count": len(segments),
-        "timeline_duration": segments[-1]["end"] if segments else info.get("duration", 0),
-    }
+        if progress_update:
+            progress_update(96, "4. Preparing Studio...", f"Prepared {len(clips)} clips ready to cut.")
+
+        return {
+            "url": clean_url,
+            "video_info": info,
+            "clips": clips,
+            "total_clips": len(clips),
+            "segments_count": len(segments),
+            "timeline_duration": max(float(segments[-1]["end"] if segments else 0), float(info.get("duration", 0))),
+        }
 
 
 @app.get("/api/health")
@@ -129,7 +169,7 @@ def health_check():
     return {
         "status": "healthy",
         "service": "Klipnux Clip Engine",
-        "version": "3.1.0",
+        "version": "3.2.0",
         "serverless": IS_VERCEL,
         "cookies_configured": COOKIES_PATH.exists() and COOKIES_PATH.stat().st_size > 20,
         "ready": True,
@@ -159,9 +199,8 @@ def get_sample_demo(
 @app.post("/api/analyze")
 @app.post("/analyze")
 def analyze_video(req: AnalyzeRequest):
-    """Synchronously analyzes a YouTube URL, local:// upload, or demo:// preset."""
     try:
-        return _run_analysis_sync(req.url, req.target_duration, req.max_clips)
+        return _run_analysis_sync(req.url, req.target_duration, req.max_clips, cookies_txt=req.cookies_txt)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except FileNotFoundError as exc:
@@ -173,10 +212,6 @@ def analyze_video(req: AnalyzeRequest):
 @app.post("/api/analyze/start")
 @app.post("/analyze/start")
 def start_analyze_job(req: AnalyzeRequest):
-    """
-    Starts analysis job. On serverless runtimes (Vercel), runs inline cleanly in one request
-    so subsequent requests never 404 across cold container switches.
-    """
     if not VideoDownloader.is_valid_youtube_url(req.url.strip()):
         raise HTTPException(status_code=400, detail="Please provide a valid YouTube URL or demo/local video.")
 
@@ -185,14 +220,14 @@ def start_analyze_job(req: AnalyzeRequest):
 
     if IS_VERCEL:
         try:
-            result = _run_analysis_sync(req.url, req.target_duration, req.max_clips)
+            result = _run_analysis_sync(req.url, req.target_duration, req.max_clips, cookies_txt=req.cookies_txt)
             return {
                 "job_id": job_id,
                 "status": "completed",
                 "progress": 100,
                 "step": 4,
                 "title": "Analysis Complete",
-                "detail": f"Extracted {result['total_clips']} high-retention moments!",
+                "detail": f"Prepared {result['total_clips']} clips ready to cut.",
                 "elapsed": round(time.time() - now, 1),
                 "result": result,
             }
@@ -207,8 +242,8 @@ def start_analyze_job(req: AnalyzeRequest):
             "status": "running",
             "progress": 8,
             "step": 1,
-            "title": "Initializing Klipnux Engine...",
-            "detail": "Preparing video ingestion worker...",
+            "title": "Connecting to klipnux...",
+            "detail": "Preparing video source...",
             "started_at": now,
             "elapsed": 0.0,
             "result": None,
@@ -229,15 +264,17 @@ def start_analyze_job(req: AnalyzeRequest):
                     })
 
         try:
-            result = _run_analysis_sync(req.url, req.target_duration, req.max_clips, progress_update=update_cb)
+            result = _run_analysis_sync(
+                req.url, req.target_duration, req.max_clips, progress_update=update_cb, cookies_txt=req.cookies_txt
+            )
             with JOBS_LOCK:
                 if job_id in ANALYSIS_JOBS:
                     ANALYSIS_JOBS[job_id].update({
                         "status": "completed",
                         "progress": 100,
                         "step": 4,
-                        "title": "Klipnux Analysis Complete",
-                        "detail": f"Extracted {result['total_clips']} high-retention moments!",
+                        "title": "Clips Ready",
+                        "detail": f"Selected {result['total_clips']} moments.",
                         "elapsed": round(time.time() - now, 1),
                         "result": result,
                     })
@@ -271,7 +308,6 @@ def get_job_status(job_id: str):
 
 @app.post("/api/upload-video")
 async def upload_local_video(request: Request, filename: str = Query("klipnux_upload.mp4")):
-    """Accepts streamed local MP4/MOV/MKV/WEBM upload for cutting & transcription."""
     orig_name = Path(filename).name or "klipnux_upload.mp4"
     ext = Path(orig_name).suffix.lower()
     if ext not in (".mp4", ".mov", ".mkv", ".webm", ".m4v"):
@@ -353,7 +389,6 @@ def update_settings(req: SettingsUpdate):
 @app.post("/api/generate-clip")
 @app.post("/generate-clip")
 def generate_clip(req: GenerateClipRequest):
-    """Cuts, formats (9:16, 1:1, 16:9), burns animated ASS captions + hook banner, and returns downloadable MP4."""
     duration = float(req.end_time) - float(req.start_time)
     if duration <= 0 or duration > 360:
         raise HTTPException(status_code=400, detail="Invalid clip duration (must be between 1s and 360s).")
@@ -364,22 +399,24 @@ def generate_clip(req: GenerateClipRequest):
     source_video_path: Optional[Path] = None
 
     try:
-        source_video_path = downloader.download_segment(
-            url=req.url,
-            start_sec=req.start_time,
-            end_sec=req.end_time,
-            output_filename=source_filename,
-        )
+        with _scoped_cookie_file(req.cookies_txt) as ck_path:
+            source_video_path = downloader.download_segment(
+                url=req.url,
+                start_sec=req.start_time,
+                end_sec=req.end_time,
+                output_filename=source_filename,
+                cookie_file=ck_path,
+            )
 
-        if req.custom_words and len(req.custom_words) > 0:
-            segments = [{
-                "start": req.start_time,
-                "end": req.end_time,
-                "text": " ".join(str(w.get("word", "")) for w in req.custom_words),
-                "words": req.custom_words,
-            }]
-        else:
-            segments = transcriber.get_transcript(req.url)
+            if req.custom_words and len(req.custom_words) > 0:
+                segments = [{
+                    "start": req.start_time,
+                    "end": req.end_time,
+                    "text": " ".join(str(w.get("word", "")) for w in req.custom_words),
+                    "words": req.custom_words,
+                }]
+            else:
+                segments = transcriber.get_transcript(req.url, cookie_file=ck_path)
 
         final_path = processor.create_short(
             input_video_path=source_video_path,
@@ -414,7 +451,6 @@ def generate_clip(req: GenerateClipRequest):
             "waveform": waveform_peaks,
         }
 
-        # Serverless cross-container safety: embed small MP4 payload on Vercel so cold container switches never 404
         if IS_VERCEL and file_size <= 2_400_000:
             payload["inline_mp4_base64"] = base64.b64encode(final_path.read_bytes()).decode("ascii")
 
@@ -432,7 +468,6 @@ def generate_clip(req: GenerateClipRequest):
 
 @app.post("/api/batch-generate")
 def batch_generate(req: BatchGenerateRequest):
-    """Renders multiple selected clips sequentially with safe per-clip isolation."""
     results = []
     for c in req.clips:
         start_t = float(c.get("start_time", 0.0))
@@ -448,6 +483,7 @@ def batch_generate(req: BatchGenerateRequest):
             caption_style=req.caption_style,
             show_hook_banner=req.show_hook_banner,
             custom_words=c.get("custom_words"),
+            cookies_txt=req.cookies_txt,
         )
         try:
             res = generate_clip(single_req)
@@ -465,7 +501,6 @@ def batch_generate(req: BatchGenerateRequest):
 @app.get("/api/download-all-zip")
 @app.get("/download-all-zip")
 def download_all_zip():
-    """Packs all rendered MP4 clips in storage/clips into a downloadable .zip archive."""
     mp4_files = list(OUTPUT_DIR.glob("*.mp4"))
     if not mp4_files:
         raise HTTPException(status_code=404, detail="No rendered clips available to download.")
@@ -486,7 +521,6 @@ def download_all_zip():
 @app.post("/api/download-zip")
 @app.post("/download-zip")
 def download_selected_zip(req: ZipSelectionRequest):
-    """Packs selected filenames (or all rendered clips if empty) into a .zip archive."""
     if req.filenames:
         mp4_files = [OUTPUT_DIR / Path(fn).name for fn in req.filenames if (OUTPUT_DIR / Path(fn).name).exists()]
     else:
@@ -548,7 +582,6 @@ def delete_single_clip(filename: str):
 @app.post("/api/clear-storage")
 @app.post("/clear-storage")
 def clear_storage():
-    """Wipes all generated clips, temp files, uploaded raw temp caches, and memory caches safely on Windows."""
     count = 0
     locked = 0
     for folder in (OUTPUT_DIR, TEMP_DIR, UPLOADS_DIR):
@@ -650,13 +683,6 @@ if not frontend_dist.exists() or not (frontend_dist / "index.html").exists():
     frontend_dist = BASE_DIR / "public"
 
 if frontend_dist.exists():
-    @app.middleware("http")
-    async def no_cache_frontend(request, call_next):
-        response = await call_next(request)
-        if request.url.path in ("/", "/index.html", "/app.js", "/style.css"):
-            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-        return response
-
     @app.get("/")
     def serve_index():
         return FileResponse(frontend_dist / "index.html")

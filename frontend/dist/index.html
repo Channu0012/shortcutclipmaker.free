@@ -715,6 +715,7 @@
                 <button type="button" id="btnRetryStageCut" class="kn-pressable kn-btn-primary" style="width: 100%; min-height: 36px; font-size: 12px;">Retry Cut</button>
                 <button type="button" id="btnStageSwitchUpload" class="kn-pressable kn-btn-secondary" style="width: 100%; min-height: 36px; font-size: 12px;">Upload MP4 File Instead</button>
                 <button type="button" id="btnStageOpenCookies" class="kn-pressable kn-btn-secondary" style="width: 100%; min-height: 34px; font-size: 11.5px;">Add YouTube Cookies in Settings</button>
+                <button type="button" id="btnStageUseLocal" class="kn-pressable kn-btn-secondary hidden" style="width: 100%; min-height: 34px; font-size: 11.5px;">Use Local Engine (localhost:8000)</button>
               </div>
             </div>
           </div>
@@ -878,9 +879,21 @@
       </div>
 
       <div style="display: flex; flex-direction: column; gap: 6px;">
-        <label for="inputSettingsCookies" style="font-size: 12px; font-weight: 600; color: var(--text-primary);">YouTube Cookies (Optional for Cloud Hosting)</label>
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+          <label for="inputSettingsCookies" style="font-size: 12px; font-weight: 600; color: var(--text-primary);">YouTube Cookies (Cloud Hosting)</label>
+          <button type="button" id="btnClearCookies" class="kn-pressable" style="border: none; background: transparent; color: var(--danger); font-size: 11px; font-weight: 600; padding: 2px 4px;">Clear</button>
+        </div>
         <textarea id="inputSettingsCookies" rows="3" class="kn-input" style="min-height: 76px; padding: 10px 12px; font-size: 11.5px; font-family: ui-monospace, monospace; resize: vertical;" placeholder="# Netscape HTTP Cookie File..."></textarea>
-        <p id="cookiesStatusHint" style="font-size: 11px; color: var(--text-secondary); margin: 0;">Not configured</p>
+        <p id="cookiesStatusHint" style="font-size: 11px; color: var(--text-secondary); margin: 0;">Not configured (paste Netscape cookies.txt from a signed-in browser tab to fix cloud YouTube blocks)</p>
+      </div>
+
+      <!-- Engine Mode (Auto vs Local Engine) -->
+      <div class="kn-subcard" style="padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <span style="font-size: 12px; font-weight: 600; color: var(--text-primary);">Engine Mode</span>
+          <span id="engineModeHint" style="font-size: 11px; color: var(--text-secondary);">Auto (Cloud / Browser)</span>
+        </div>
+        <button type="button" id="btnToggleLocalEngine" class="kn-pressable kn-icon-btn" style="min-height: 32px; font-size: 11.5px;">Use localhost:8000</button>
       </div>
 
       <!-- Storage Cleanup inside Settings -->
