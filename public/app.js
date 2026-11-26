@@ -643,9 +643,23 @@ document.addEventListener("DOMContentLoaded", () => {
     updateBatchCountLabel();
 
     if (currentClips.length > 0) {
+      if (currentVideoInfo.is_demo && !renderedClipsMap[currentClips[0].id]) {
+        renderedClipsMap[currentClips[0].id] = {
+          clip_id: "demo_preview",
+          filename: "sample_preview.mp4",
+          download_url: "/assets/sample_preview.mp4",
+          stream_url: "/assets/sample_preview.mp4",
+          duration: currentClips[0].duration,
+          title: currentClips[0].hook_title,
+          size_mb: 2.25,
+          signature: getClipSignature(currentClips[0]),
+          waveform: currentClips[0].waveform_preview,
+        };
+      }
       selectClip(currentClips[0]);
-      // Auto-render Clip #1 in background so user immediately gets a real 1080p MP4 preview & download
-      renderAndPlayClip(currentClips[0]);
+      if (!currentVideoInfo.is_demo) {
+        renderAndPlayClip(currentClips[0]);
+      }
     }
   }
 
