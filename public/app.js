@@ -89,7 +89,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let currentVideoInfo = null;
   let currentClips = [];
   let filteredClips = [];
-  let renderedClipsMap = {}; // { [clipId]: { ...serverClipData, signature, blob_url } }
+  let renderedClipsMap = {}; // { [clipId]: { ...clipData, signature, blob_url } }
   let selectedClipIds = new Set();
   let activeClip = null;
   let activeCategory = "all";
@@ -100,9 +100,10 @@ document.addEventListener("DOMContentLoaded", () => {
   let activePollTimer = null;
   let elapsedTimerInterval = null;
   let renderTimerInterval = null;
-  let currentWizardStep = 1;
-  let activeSourceMode = "upload";
   let isPlayingLiveSource = false;
+  let demoVirtualPos = 0;
+  let demoLastVideoTime = 0;
+  let currentZoomValue = 1;
   const speedSteps = [1, 1.25, 1.5, 2];
   let speedIdx = 0;
 
@@ -116,22 +117,34 @@ document.addEventListener("DOMContentLoaded", () => {
   const navHowItWorks = document.getElementById("navHowItWorks");
   const btnLogoHome = document.getElementById("btnLogoHome");
   const btnNewProject = document.getElementById("btnNewProject");
+  const btnOpenAutoSlice = document.getElementById("btnOpenAutoSlice");
 
-  // Wizard Step Controls
-  const wizardStep1 = document.getElementById("wizardStep1");
-  const wizardStep2 = document.getElementById("wizardStep2");
-  const wizPill1 = document.getElementById("wizPill1");
-  const wizPill2 = document.getElementById("wizPill2");
-  const wizPill3 = document.getElementById("wizPill3");
-  const btnWizardNext = document.getElementById("btnWizardNext");
-  const btnWizardBack = document.getElementById("btnWizardBack");
-  const step2SourceSummary = document.getElementById("step2SourceSummary");
+  // Homepage Interactive Playground Controls
+  const heroPgFrame = document.getElementById("heroPgFrame");
+  const heroPgVideo = document.getElementById("heroPgVideo");
+  const heroPgCaptionBox = document.getElementById("heroPgCaptionBox");
+  const heroPgTimeLabel = document.getElementById("heroPgTimeLabel");
+  const heroPgScrubber = document.getElementById("heroPgScrubber");
+  const heroPgNeedle = document.getElementById("heroPgNeedle");
+  const pgAspectBtns = document.querySelectorAll(".pg-aspect-btn");
+  const pgCaptionBtns = document.querySelectorAll(".pg-caption-btn");
+
+  // Auto-Slice Modal Controls
+  const autoSliceModal = document.getElementById("autoSliceModal");
+  const btnCloseAutoSlice = document.getElementById("btnCloseAutoSlice");
+  const btnApplyAutoSlice = document.getElementById("btnApplyAutoSlice");
   const urlStatusHint = document.getElementById("urlStatusHint");
   const clipsCountPills = document.querySelectorAll("#clipsCountPills .kn-count-pill");
   const btnShowcaseDemo = document.getElementById("btnShowcaseDemo");
 
-  // Mobile Workspace Switcher
+  // Mobile Dock & Tabbed Studio Tools
+  const mobileBottomDock = document.getElementById("mobileBottomDock");
   const mobileTabBtns = document.querySelectorAll(".mobile-tab-btn");
+  const studioToolTabs = document.querySelectorAll(".studio-tool-tab");
+  const toolPanelCaptions = document.getElementById("toolPanelCaptions");
+  const toolPanelLook = document.getElementById("toolPanelLook");
+  const toolPanelTrim = document.getElementById("toolPanelTrim");
+  const toolPanelHook = document.getElementById("toolPanelHook");
   const paneClips = document.getElementById("paneClips");
   const panePreview = document.getElementById("panePreview");
   const paneInspector = document.getElementById("paneInspector");
@@ -150,15 +163,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const engineModeHint = document.getElementById("engineModeHint");
   const btnToggleLocalEngine = document.getElementById("btnToggleLocalEngine");
 
-  // Launcher Controls (100% Pure Video Upload & Mobile Footage Flow)
+  // Launcher Controls (Instant Unlock Open Flow)
   const fileUploadInput = document.getElementById("fileUploadInput");
   const dropZone = document.getElementById("dropZone");
   const uploadLabelText = document.getElementById("uploadLabelText");
-  const fileUploadMeta = document.getElementById("fileUploadMeta");
-  const metaFileName = document.getElementById("metaFileName");
-  const metaFileDetails = document.getElementById("metaFileDetails");
-  const btnMetaProceed = document.getElementById("btnMetaProceed");
-
   const clipForm = document.getElementById("clipForm");
   const urlInput = document.getElementById("urlInput");
   const btnQuickDemo = document.getElementById("btnQuickDemo");
@@ -170,7 +178,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const layoutSelect = document.getElementById("layoutSelect");
   const captionSelect = document.getElementById("captionSelect");
   const chkHookBanner = document.getElementById("chkHookBanner");
-  const launcherCaptionSwatches = document.querySelectorAll("#launcherCaptionSwatches .caption-swatch");
 
   // Processing View Controls
   const processStatusTitle = document.getElementById("processStatusTitle");
@@ -187,6 +194,12 @@ document.addEventListener("DOMContentLoaded", () => {
   const clipsFoundBadge = document.getElementById("clipsFoundBadge");
   const timelineTrackContainer = document.getElementById("timelineTrackContainer");
   const timelineTrack = document.getElementById("timelineTrack");
+  const nleFilmstripThumbs = document.getElementById("nleFilmstripThumbs");
+  const nleSelectionBox = document.getElementById("nleSelectionBox");
+  const nleHandleLeft = document.getElementById("nleHandleLeft");
+  const nleHandleRight = document.getElementById("nleHandleRight");
+  const nleDragReadout = document.getElementById("nleDragReadout");
+  const nleTrimLivePill = document.getElementById("nleTrimLivePill");
   const btnAddNewClip = document.getElementById("btnAddNewClip");
   const categoryFilterBar = document.getElementById("categoryFilterBar");
   const clipCardsList = document.getElementById("clipCardsList");
@@ -200,6 +213,15 @@ document.addEventListener("DOMContentLoaded", () => {
   // Center Stage Controls
   const aspectBtns = document.querySelectorAll(".aspect-btn");
   const workspaceCaptionSelect = document.getElementById("workspaceCaptionSelect");
+  const studioCapSwatches = document.querySelectorAll(".studio-cap-swatch");
+  const capSizePills = document.querySelectorAll(".cap-size-pill");
+  const capPosPills = document.querySelectorAll(".cap-pos-pill");
+  const capAnimPills = document.querySelectorAll(".cap-anim-pill");
+  const lookFilterPills = document.querySelectorAll(".look-filter-pill");
+  const lookFitPills = document.querySelectorAll(".look-fit-pill");
+  const lookPanPills = document.querySelectorAll(".look-pan-pill");
+  const zoomRangeSlider = document.getElementById("zoomRangeSlider");
+  const zoomSliderLabel = document.getElementById("zoomSliderLabel");
   const btnPlaybackSpeed = document.getElementById("btnPlaybackSpeed");
   const deviceFrame = document.getElementById("deviceFrame");
   const previewBackdrop = document.getElementById("previewBackdrop");
@@ -215,7 +237,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnSetMarkIn = document.getElementById("btnSetMarkIn");
   const btnSetMarkOut = document.getElementById("btnSetMarkOut");
   const playheadTimecode = document.getElementById("playheadTimecode");
-  const waveformCutRange = document.getElementById("waveformCutRange");
   const studioFilterSelect = document.getElementById("studioFilterSelect");
   const studioFitSelect = document.getElementById("studioFitSelect");
   const studioPanSelect = document.getElementById("studioPanSelect");
@@ -359,8 +380,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function formatTime(seconds) {
     const sTotal = Math.max(0, Math.floor(Number(seconds) || 0));
-    const m = Math.floor(sTotal / 60);
+    const h = Math.floor(sTotal / 3600);
+    const m = Math.floor((sTotal % 3600) / 60);
     const s = sTotal % 60;
+    if (h > 0) {
+      return `${h}:${m < 10 ? "0" : ""}${m}:${s < 10 ? "0" : ""}${s}`;
+    }
     return `${m}:${s < 10 ? "0" : ""}${s}`;
   }
 
@@ -375,61 +400,52 @@ document.addEventListener("DOMContentLoaded", () => {
     return 0;
   }
 
-  function extractYouTubeId(url) {
-    if (!url) return null;
-    const s = url.trim();
-    if (s.startsWith("demo://") || s.startsWith("local://")) return s;
-    const m = s.match(/(?:v=|youtu\.be\/|youtube\.com\/(?:shorts|live|embed)\/)([0-9A-Za-z_-]{11})/);
-    return m ? m[1] : null;
-  }
-
   function validateSourceInline() {
     if (!urlInput || !urlStatusHint) return true;
     const val = urlInput.value.trim();
     if (!val) {
-      urlStatusHint.textContent = "Works directly from phone camera roll or desktop — zero limits";
+      urlStatusHint.textContent = "MP4, MOV, MKV, WEBM — unlocks directly into timeline editor";
       urlStatusHint.style.color = "var(--text-secondary)";
       return false;
     }
-    urlStatusHint.textContent = val.startsWith("local://") ? "Uploaded video ready for editing" : "Studio Demo ready";
+    urlStatusHint.textContent = val.startsWith("local://") ? "Opened in Timeline Studio" : "Demo Studio ready";
     urlStatusHint.style.color = "var(--success)";
     return true;
   }
 
-  function setWizardStep(step, direction = "next") {
-    currentWizardStep = step;
-    if (!wizardStep1 || !wizardStep2) return;
-
-    wizardStep1.classList.remove("animate-step-next", "animate-step-back");
-    wizardStep2.classList.remove("animate-step-next", "animate-step-back");
-
-    if (step === 1) {
-      wizardStep1.classList.remove("hidden");
-      wizardStep2.classList.add("hidden");
-      wizardStep1.classList.add(direction === "back" ? "animate-step-back" : "animate-step-next");
-      if (wizPill1) wizPill1.className = "kn-wiz-step active";
-      if (wizPill2) wizPill2.className = "kn-wiz-step";
-      if (wizPill3) wizPill3.className = "kn-wiz-step";
-    } else if (step === 2) {
-      const val = urlInput ? urlInput.value.trim() : "";
-      if (step2SourceSummary) {
-        if (val.startsWith("local://")) {
-          let cleanFile = val.replace("local://browser/", "").replace("local://", "");
-          try { cleanFile = decodeURIComponent(cleanFile); } catch (_) {}
-          step2SourceSummary.textContent = `File: ${cleanFile}`;
-        } else {
-          step2SourceSummary.textContent = val;
-        }
-      }
-      wizardStep1.classList.add("hidden");
-      wizardStep2.classList.remove("hidden");
-      wizardStep2.classList.add("animate-step-next");
-      if (wizPill1) wizPill1.className = "kn-wiz-step done";
-      if (wizPill2) wizPill2.className = "kn-wiz-step active";
-      if (wizPill3) wizPill3.className = "kn-wiz-step";
-    }
+  function setActiveToolTab(toolName) {
+    studioToolTabs.forEach((t) => {
+      t.classList.toggle("active", t.dataset.tool === toolName);
+    });
+    if (toolPanelCaptions) toolPanelCaptions.classList.toggle("hidden", toolName !== "captions");
+    if (toolPanelLook) toolPanelLook.classList.toggle("hidden", toolName !== "look");
+    if (toolPanelTrim) toolPanelTrim.classList.toggle("hidden", toolName !== "trim");
+    if (toolPanelHook) toolPanelHook.classList.toggle("hidden", toolName !== "hook");
     refreshIcons();
   }
+
+  studioToolTabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      setActiveToolTab(tab.dataset.tool || "captions");
+    });
+  });
+
+  function setMobilePane(pane, toolName = null) {
+    mobileTabBtns.forEach((btn) => {
+      const samePane = btn.dataset.pane === pane;
+      const sameTool = !toolName || !btn.dataset.tool || btn.dataset.tool === toolName;
+      btn.classList.toggle("active", samePane && sameTool);
+    });
+    if (paneClips) paneClips.classList.toggle("mobile-pane-hidden", pane !== "clips");
+    if (paneInspector) paneInspector.classList.toggle("mobile-pane-hidden", pane !== "inspector");
+    if (toolName) setActiveToolTab(toolName);
+  }
+
+  mobileTabBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      setMobilePane(btn.dataset.pane || "inspector", btn.dataset.tool || null);
+    });
+  });
 
   function showView(viewName) {
     launcherView.classList.add("hidden");
@@ -442,8 +458,9 @@ document.addEventListener("DOMContentLoaded", () => {
       headerProjectMeta.classList.add("hidden");
       btnNewProject.classList.add("hidden");
       btnDownloadAllTop.classList.add("hidden");
+      if (btnOpenAutoSlice) btnOpenAutoSlice.classList.add("hidden");
+      if (mobileBottomDock) mobileBottomDock.classList.add("hidden");
       if (navHowItWorks) navHowItWorks.classList.remove("hidden");
-      setWizardStep(1, "back");
       refreshStorageStats();
     } else if (viewName === "processing") {
       document.body.classList.remove("in-workspace");
@@ -451,9 +468,9 @@ document.addEventListener("DOMContentLoaded", () => {
       headerProjectMeta.classList.add("hidden");
       btnNewProject.classList.add("hidden");
       btnDownloadAllTop.classList.add("hidden");
+      if (btnOpenAutoSlice) btnOpenAutoSlice.classList.add("hidden");
+      if (mobileBottomDock) mobileBottomDock.classList.add("hidden");
       if (navHowItWorks) navHowItWorks.classList.add("hidden");
-      if (wizPill2) wizPill2.className = "kn-wiz-step done";
-      if (wizPill3) wizPill3.className = "kn-wiz-step active";
     } else if (viewName === "workspace") {
       document.body.classList.add("in-workspace");
       resultsSection.classList.remove("hidden");
@@ -461,24 +478,105 @@ document.addEventListener("DOMContentLoaded", () => {
       headerProjectMeta.style.display = "flex";
       btnNewProject.classList.remove("hidden");
       btnDownloadAllTop.classList.remove("hidden");
+      if (btnOpenAutoSlice) btnOpenAutoSlice.classList.remove("hidden");
+      if (mobileBottomDock) mobileBottomDock.classList.remove("hidden");
       if (navHowItWorks) navHowItWorks.classList.add("hidden");
-      setMobilePane("preview");
+      setMobilePane("inspector", "captions");
     }
     refreshIcons();
   }
 
-  function setMobilePane(pane) {
-    mobileTabBtns.forEach((btn) => {
-      btn.classList.toggle("active", btn.dataset.pane === pane);
-    });
-    if (paneClips) paneClips.classList.toggle("mobile-pane-hidden", pane !== "clips");
-    if (panePreview) panePreview.classList.toggle("mobile-pane-hidden", pane !== "preview");
-    if (paneInspector) paneInspector.classList.toggle("mobile-pane-hidden", pane !== "inspector");
-  }
+  // Homepage Live Interactive Playground Controller
+  function initHeroPlayground() {
+    if (!heroPgFrame || !heroPgCaptionBox) return;
+    let pgCapStyle = "hormozi";
+    const pgWords = ["CUT", "ANY", "LONG", "VIDEO", "OR", "MOVIE", "INTO", "CRISP", "REELS", "FROM", "YOUR", "PHONE"];
 
-  mobileTabBtns.forEach((btn) => {
-    btn.addEventListener("click", () => setMobilePane(btn.dataset.pane));
-  });
+    const renderPgCaptions = (progressPct) => {
+      const idx = Math.min(pgWords.length - 1, Math.floor((progressPct / 100) * pgWords.length));
+      const chunkStart = Math.floor(idx / 3) * 3;
+      const chunk = pgWords.slice(chunkStart, chunkStart + 3);
+      heroPgCaptionBox.className = `live-caption-box caption-style-${pgCapStyle}`;
+      const isCaps = ["hormozi", "mrbeast", "neon", "kinetic", "noir"].includes(pgCapStyle);
+      heroPgCaptionBox.innerHTML = chunk.map((w, i) => {
+        const active = (chunkStart + i) === idx;
+        const txt = isCaps ? w.toUpperCase() : w;
+        let col = "#ffffff";
+        if (pgCapStyle === "minimal" && !active) col = "#1f2937";
+        if (pgCapStyle === "mrbeast" && !active) col = "#fde047";
+        return `<span class="${active ? "live-word-active" : ""}" style="color:${col};">${txt}</span>`;
+      }).join(" ");
+    };
+
+    pgAspectBtns.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        pgAspectBtns.forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        const r = btn.dataset.pgAspect || "9:16";
+        heroPgFrame.classList.remove("pg-4-5", "pg-1-1", "pg-16-9");
+        if (r === "4:5") heroPgFrame.classList.add("pg-4-5");
+        else if (r === "1:1") heroPgFrame.classList.add("pg-1-1");
+        else if (r === "16:9") heroPgFrame.classList.add("pg-16-9");
+      });
+    });
+
+    pgCaptionBtns.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        pgCaptionBtns.forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        pgCapStyle = btn.dataset.pgCap || "hormozi";
+        const curPct = heroPgNeedle ? parseFloat(heroPgNeedle.style.left) || 35 : 35;
+        renderPgCaptions(curPct);
+      });
+    });
+
+    let pgTick = 35;
+    let pgScrubbing = false;
+    setInterval(() => {
+      if (pgScrubbing || launcherView.classList.contains("hidden")) return;
+      if (heroPgVideo && heroPgVideo.duration && !heroPgVideo.paused) {
+        pgTick = (heroPgVideo.currentTime / heroPgVideo.duration) * 100;
+        if (heroPgTimeLabel) {
+          heroPgTimeLabel.textContent = `${formatTime(heroPgVideo.currentTime)} / ${formatTime(heroPgVideo.duration)} · Drag timeline below`;
+        }
+      } else {
+        pgTick = (pgTick + 6) % 100;
+      }
+      if (heroPgNeedle) heroPgNeedle.style.left = `${pgTick.toFixed(1)}%`;
+      renderPgCaptions(pgTick);
+    }, 320);
+
+    if (heroPgScrubber) {
+      const scrubPg = (clientX) => {
+        const rect = heroPgScrubber.getBoundingClientRect();
+        const pct = Math.max(0, Math.min(100, ((clientX - rect.left) / Math.max(1, rect.width)) * 100));
+        if (heroPgNeedle) heroPgNeedle.style.left = `${pct.toFixed(1)}%`;
+        if (heroPgVideo && heroPgVideo.duration) {
+          const target = (pct / 100) * heroPgVideo.duration;
+          heroPgVideo.currentTime = target;
+          if (heroPgTimeLabel) heroPgTimeLabel.textContent = `${formatTime(target)} / ${formatTime(heroPgVideo.duration)}`;
+        }
+        renderPgCaptions(pct);
+      };
+      heroPgScrubber.onpointerdown = (e) => {
+        pgScrubbing = true;
+        if (heroPgScrubber.setPointerCapture) heroPgScrubber.setPointerCapture(e.pointerId);
+        scrubPg(e.clientX);
+      };
+      heroPgScrubber.onpointermove = (e) => {
+        if (pgScrubbing) scrubPg(e.clientX);
+      };
+      heroPgScrubber.onpointerup = (e) => {
+        pgScrubbing = false;
+        if (heroPgScrubber.releasePointerCapture) {
+          try { heroPgScrubber.releasePointerCapture(e.pointerId); } catch (_) {}
+        }
+      };
+    }
+
+    renderPgCaptions(35);
+  }
+  initHeroPlayground();
 
   function syncClipsCountPills(val) {
     const num = Math.max(1, Math.min(60, parseInt(val, 10) || 12));
@@ -497,11 +595,6 @@ document.addEventListener("DOMContentLoaded", () => {
     clipsCountPills.forEach((p) => {
       const isMatch = p.dataset.count === strVal;
       p.classList.toggle("active", isMatch);
-      const sub = p.querySelector("span");
-      if (sub) {
-        sub.style.color = isMatch ? "var(--brand-violet)" : "var(--text-secondary)";
-        sub.style.fontWeight = isMatch ? "600" : "400";
-      }
     });
   }
 
@@ -515,18 +608,129 @@ document.addEventListener("DOMContentLoaded", () => {
     clipsCountCustom.addEventListener("input", () => syncClipsCountPills(clipsCountCustom.value));
   }
 
-  if (btnWizardNext) {
-    btnWizardNext.addEventListener("click", () => {
-      if (!urlInput.value || (!urlInput.value.startsWith("local://") && !urlInput.value.startsWith("demo://"))) {
-        if (fileUploadInput) fileUploadInput.click();
-        return showToast("Select a video file from your phone or computer first", true);
+  if (btnOpenAutoSlice && autoSliceModal) {
+    btnOpenAutoSlice.addEventListener("click", () => {
+      autoSliceModal.classList.remove("hidden");
+      refreshIcons();
+    });
+  }
+  if (btnCloseAutoSlice && autoSliceModal) {
+    btnCloseAutoSlice.addEventListener("click", () => autoSliceModal.classList.add("hidden"));
+  }
+  if (autoSliceModal) {
+    autoSliceModal.addEventListener("click", (e) => {
+      if (e.target === autoSliceModal) autoSliceModal.classList.add("hidden");
+    });
+  }
+  if (btnApplyAutoSlice) {
+    btnApplyAutoSlice.addEventListener("click", async () => {
+      if (autoSliceModal) autoSliceModal.classList.add("hidden");
+      const maxClips = Math.max(1, Math.min(60, parseInt(clipsCountCustom ? clipsCountCustom.value : clipsCountSelect.value, 10) || 12));
+      const targetDuration = parseInt(durationSelect ? durationSelect.value : 45, 10) || 45;
+      const discoveryMode = analysisModeSelect ? analysisModeSelect.value : "smart_peaks";
+      if (localClientSession && !localClientSession.isDemoLive) {
+        renderedClipsMap = {};
+        const sliced = analyzeClientLocalSession(maxClips, targetDuration, discoveryMode);
+        await hydrateWorkspace(sliced);
+        showToast(`Re-sliced into ${sliced.clips.length} clips`);
+      } else if (currentVideoUrl) {
+        await triggerAnalyze(currentVideoUrl);
       }
-      setWizardStep(2, "next");
     });
   }
 
-  if (btnWizardBack) {
-    btnWizardBack.addEventListener("click", () => setWizardStep(1, "back"));
+  // Visual Pill Mirrors inside Studio Tools
+  studioCapSwatches.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const st = btn.dataset.style || "hormozi";
+      studioCapSwatches.forEach((b) => b.classList.toggle("active", b === btn));
+      if (captionSelect) captionSelect.value = st;
+      if (workspaceCaptionSelect) workspaceCaptionSelect.value = st;
+      onClipEdited(false);
+    });
+  });
+
+  capSizePills.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      capSizePills.forEach((b) => b.classList.toggle("active", b === btn));
+      if (captionSizeSelect) {
+        captionSizeSelect.value = btn.dataset.capSize || "1";
+        captionSizeSelect.dispatchEvent(new Event("change"));
+      }
+    });
+  });
+
+  capPosPills.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      capPosPills.forEach((b) => b.classList.toggle("active", b === btn));
+      if (captionPosSelect) {
+        captionPosSelect.value = btn.dataset.capPos || "bottom";
+        captionPosSelect.dispatchEvent(new Event("change"));
+      }
+    });
+  });
+
+  capAnimPills.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      capAnimPills.forEach((b) => b.classList.toggle("active", b === btn));
+      if (captionAnimSelect) {
+        captionAnimSelect.value = btn.dataset.capAnim || "pop";
+        captionAnimSelect.dispatchEvent(new Event("change"));
+      }
+    });
+  });
+
+  lookFilterPills.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      lookFilterPills.forEach((b) => b.classList.toggle("active", b === btn));
+      if (studioFilterSelect) {
+        studioFilterSelect.value = btn.dataset.filter || "none";
+        studioFilterSelect.dispatchEvent(new Event("change"));
+      }
+    });
+  });
+
+  lookFitPills.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      lookFitPills.forEach((b) => b.classList.toggle("active", b === btn));
+      if (studioFitSelect) {
+        studioFitSelect.value = btn.dataset.fit || "blur_margins";
+        studioFitSelect.dispatchEvent(new Event("change"));
+      }
+    });
+  });
+
+  lookPanPills.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      lookPanPills.forEach((b) => b.classList.toggle("active", b === btn));
+      if (studioPanSelect) {
+        studioPanSelect.value = btn.dataset.pan || "center";
+        studioPanSelect.dispatchEvent(new Event("change"));
+      }
+    });
+  });
+
+  if (zoomRangeSlider) {
+    zoomRangeSlider.addEventListener("input", () => {
+      const z = parseFloat(zoomRangeSlider.value) || 1;
+      currentZoomValue = z;
+      if (zoomSliderLabel) zoomSliderLabel.textContent = `${z.toFixed(2)}x`;
+      if (studioZoomSelect) studioZoomSelect.value = String(z);
+      applyVideoStageTransform();
+    });
+    zoomRangeSlider.addEventListener("change", () => onClipEdited(false));
+  }
+
+  if (liveSubtitleTrack) {
+    liveSubtitleTrack.addEventListener("click", () => {
+      setMobilePane("inspector", "captions");
+    });
+  }
+  if (liveBannerOverlay) {
+    liveBannerOverlay.addEventListener("click", () => {
+      setMobilePane("inspector", "hook");
+      if (inputHookTitle) inputHookTitle.focus();
+    });
   }
 
   if (urlInput) {
@@ -556,7 +760,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const layout = layoutSelect ? layoutSelect.value : "blur_margins";
     const grade = studioFilterSelect ? studioFilterSelect.value : "none";
     const pan = studioPanSelect ? studioPanSelect.value : "center";
-    const zoom = studioZoomSelect ? studioZoomSelect.value : "1";
+    const zoom = (zoomRangeSlider && zoomRangeSlider.value) || (studioZoomSelect && studioZoomSelect.value) || "1";
     const cSize = captionSizeSelect ? captionSizeSelect.value : "1";
     const cPos = captionPosSelect ? captionPosSelect.value : "bottom";
     const cAnim = captionAnimSelect ? captionAnimSelect.value : "pop";
@@ -1171,12 +1375,16 @@ document.addEventListener("DOMContentLoaded", () => {
       srcVid.onerror = () => reject(new Error("Browser could not decode this video format."));
     });
 
-    srcVid.currentTime = startSec;
+    srcVid.currentTime = sess.isDemoLive ? 0 : startSec;
     await new Promise((resolve) => {
       const done = () => resolve();
       srcVid.onseeked = done;
       setTimeout(done, 1500);
     });
+    if (sess.isDemoLive) {
+      const vd = Math.max(3, srcVid.duration || 12);
+      srcVid.currentTime = startSec % Math.max(1.5, vd - 1.5);
+    }
 
     let audioCtx = null;
     let audioTracks = [];
@@ -1221,7 +1429,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const vh = srcVid.videoHeight || sess.height || 720;
       const activeFit = (studioFitSelect && studioFitSelect.value === "center_crop") || layoutStyle === "center_crop";
       const activeColorFilter = (studioFilterSelect && studioFilterSelect.value && studioFilterSelect.value !== "none") ? studioFilterSelect.value : "none";
-      const zoomFactor = studioZoomSelect ? Math.max(1, parseFloat(studioZoomSelect.value) || 1) : 1;
+      const zoomFactor = Math.max(1, parseFloat((zoomRangeSlider && zoomRangeSlider.value) || (studioZoomSelect && studioZoomSelect.value) || "1") || 1);
       const panMode = studioPanSelect ? studioPanSelect.value : "center";
       const capScale = captionSizeSelect ? Math.max(0.75, parseFloat(captionSizeSelect.value) || 1) : 1;
       const capPos = captionPosSelect ? captionPosSelect.value : "bottom";
@@ -1424,14 +1632,18 @@ document.addEventListener("DOMContentLoaded", () => {
       };
 
       const startedAt = performance.now();
+      const targetCaptureDur = sess.isDemoLive ? Math.min(cutDur, 10) : cutDur;
       const tick = () => {
         if (stopped) return;
         drawFrame();
         const elapsed = (performance.now() - startedAt) / 1000;
         if (stageRenderTimer) {
-          stageRenderTimer.textContent = `Cutting ${Math.min(cutDur, elapsed).toFixed(1)}s / ${cutDur.toFixed(0)}s`;
+          stageRenderTimer.textContent = `Cutting ${Math.min(targetCaptureDur, elapsed).toFixed(1)}s / ${targetCaptureDur.toFixed(0)}s`;
         }
-        if ((srcVid.currentTime >= endSec - 0.05) || srcVid.ended || elapsed >= cutDur + 0.8) {
+        if (
+          (sess.isDemoLive && elapsed >= targetCaptureDur) ||
+          (!sess.isDemoLive && ((srcVid.currentTime >= endSec - 0.05) || srcVid.ended || elapsed >= cutDur + 0.8))
+        ) {
           finishStop();
           return;
         }
@@ -1458,47 +1670,20 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function handleLocalVideoUpload(file) {
     if (!file) return;
-    uploadLabelText.textContent = `Preparing ${file.name} (${(file.size / (1024 * 1024)).toFixed(1)} MB)...`;
+    if (uploadLabelText) {
+      uploadLabelText.textContent = `Unlocking ${file.name} (${(file.size / (1024 * 1024)).toFixed(1)} MB)...`;
+    }
     try {
-      await resolveWorkingApiBase();
-      const useBrowserEngine = isServerlessEnv || !apiConnected;
-      if (!useBrowserEngine) {
-        try {
-          const res = await fetch(`${API_BASE}/api/upload-video?filename=${encodeURIComponent(file.name)}`, {
-            method: "POST",
-            body: file,
-          });
-          if (res.ok) {
-            const data = await res.json();
-            urlInput.value = data.url;
-            uploadLabelText.textContent = `Uploaded: ${file.name}`;
-            showToast(`Uploaded ${file.name}`);
-            setWizardStep(2, "next");
-            return;
-          }
-        } catch (_) {}
-      }
-
       const sess = await prepareClientLocalVideo(file);
       urlInput.value = sess.url;
-      uploadLabelText.textContent = `Ready in Browser Studio: ${file.name}`;
-      if (fileUploadMeta && metaFileName && metaFileDetails) {
-        metaFileName.textContent = file.name;
-        metaFileDetails.textContent = `${formatTime(sess.duration)} · ${sess.width}x${sess.height} · ${(file.size / (1024 * 1024)).toFixed(1)} MB · Offline Browser Engine`;
-        fileUploadMeta.classList.remove("hidden");
-      }
-      showToast(`Loaded ${file.name} (${formatTime(sess.duration)})`);
-      setWizardStep(2, "next");
+      uploadLabelText.textContent = "Drop or tap to open any video or movie";
+      showToast(`Opened ${file.name} (${formatTime(sess.duration)})`);
+      // Instantly unlock directly into the CapCut/VN Timeline Studio with zero wizard gate
+      await triggerAnalyze(sess.url);
     } catch (err) {
-      uploadLabelText.textContent = "Drop MP4, MOV, MKV, or WEBM footage here";
-      showToast(err.message || "Video load failed", true);
+      uploadLabelText.textContent = "Drop or tap to open any video or movie";
+      showToast(err.message || "Could not open this video file", true);
     }
-  }
-
-  if (btnMetaProceed) {
-    btnMetaProceed.addEventListener("click", () => {
-      setWizardStep(2, "next");
-    });
   }
 
   if (fileUploadInput) {
@@ -1522,27 +1707,12 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  launcherCaptionSwatches.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      launcherCaptionSwatches.forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      const st = btn.dataset.style;
-      captionSelect.value = st;
-      if (workspaceCaptionSelect) workspaceCaptionSelect.value = st;
-      updateLiveStagePreview();
-    });
-  });
-
   sampleChips.forEach((chip) => {
     chip.addEventListener("click", () => {
-      const target = chip.dataset.url;
+      const target = chip.dataset.url || "demo://creator-podcast";
       urlInput.value = target;
       validateSourceInline();
-      if (target.startsWith("demo://")) {
-        triggerAnalyze(target);
-      } else {
-        setWizardStep(2, "next");
-      }
+      triggerAnalyze(target);
     });
   });
 
@@ -1562,17 +1732,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
   clipForm.addEventListener("submit", (e) => {
     e.preventDefault();
-    if (currentWizardStep === 1) {
-      if (btnWizardNext) btnWizardNext.click();
+    const url = urlInput.value.trim();
+    if (!url) {
+      if (fileUploadInput) fileUploadInput.click();
       return;
     }
-    const url = urlInput.value.trim();
-    if (!url) return showToast("Select a video file first or load a Studio Demo", true);
     triggerAnalyze(url);
   });
 
   // =========================================================
-  // ANALYSIS PIPELINE & FIRST-CLIP AUTO-CUT FLOW
+  // INSTANT UNLOCK PIPELINE & FALLBACK DEMO HYDRATION
   // =========================================================
   function stopJobTimers() {
     clearTimeout(activePollTimer);
@@ -1623,38 +1792,47 @@ document.addEventListener("DOMContentLoaded", () => {
       processElapsedTimer.textContent = `${sec}s`;
     }, 100);
 
-    updateProcessingSteps(1, 14, "Connecting to klipnux...", "Inspecting stream and duration...");
+    updateProcessingSteps(1, 20, "Unlocking Studio...", "Reading video stream & duration...");
 
     try {
       const maxClips = Math.max(1, Math.min(60, parseInt(clipsCountCustom ? clipsCountCustom.value : clipsCountSelect.value, 10) || 12));
-      const targetDuration = parseInt(durationSelect.value, 10) || 45;
+      const targetDuration = parseInt(durationSelect ? durationSelect.value : 45, 10) || 45;
       const discoveryMode = analysisModeSelect ? analysisModeSelect.value : "smart_peaks";
 
       if (chkWorkspaceBanner && chkHookBanner) {
         chkWorkspaceBanner.checked = chkHookBanner.checked;
       }
-      if (workspaceCaptionSelect) {
+      if (workspaceCaptionSelect && captionSelect) {
         workspaceCaptionSelect.value = captionSelect.value;
       }
 
       if (url.startsWith("local://browser/") && localClientSession) {
-        updateProcessingSteps(2, 54, "2. Scanning uploaded video...", discoveryMode === "uniform_chapters" ? "Slicing chapters cleanly across full video..." : "Detecting audio peaks & key scenes...");
+        updateProcessingSteps(2, 62, "2. Scanning peaks & scenes...", discoveryMode === "uniform_chapters" ? "Creating full-movie chapters..." : "Mapping energy peaks & keyframes...");
         const localData = analyzeClientLocalSession(maxClips, targetDuration, discoveryMode);
-        updateProcessingSteps(4, 96, "4. Opening Editor Studio...", "Preparing instant timeline preview...");
+        updateProcessingSteps(4, 96, "4. Opening Timeline...", "Ready to trim & cut!");
         stopJobTimers();
         await hydrateWorkspace(localData);
         return;
       }
 
       const resolvedBase = await resolveWorkingApiBase();
+      if (resolvedBase === null && url.startsWith("demo://")) {
+        const res = await fetch("/sample_data.json");
+        if (res.ok) {
+          const fallbackData = await res.json();
+          stopJobTimers();
+          await hydrateWorkspace(fallbackData);
+          return;
+        }
+      }
       if (resolvedBase === null) {
-        throw new Error("Backend engine not connected. Select a video file directly from your device to edit offline.");
+        throw new Error("Drop or select a video file directly from your device to edit offline.");
       }
 
       const reqPayload = {
         url,
         target_duration: targetDuration,
-        max_clips: maxClips,
+        max_clips: Math.min(25, maxClips),
         cookies_txt: null,
       };
 
@@ -1667,10 +1845,15 @@ document.addEventListener("DOMContentLoaded", () => {
       if (startRes.status === 404 || startRes.status === 405) {
         updateProcessingSteps(2, 52, "2. Reading speech track...", "Selecting top segments...");
         const syncRes = await postAnalyzeRequest("/api/analyze", reqPayload);
-        if (syncRes.status === 405) {
-          throw new Error("Static file server cannot run backend API requests (HTTP 405). Open http://127.0.0.1:8000 or connect Local Engine in Settings.");
-        }
         if (!syncRes.ok) {
+          if (url.startsWith("demo://")) {
+            const fbRes = await fetch("/sample_data.json");
+            if (fbRes.ok) {
+              stopJobTimers();
+              await hydrateWorkspace(await fbRes.json());
+              return;
+            }
+          }
           const err = await syncRes.json().catch(() => ({}));
           throw new Error(err.detail || `Server error (${syncRes.status})`);
         }
@@ -1681,13 +1864,21 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       if (!startRes.ok) {
+        if (url.startsWith("demo://")) {
+          const fbRes = await fetch("/sample_data.json");
+          if (fbRes.ok) {
+            stopJobTimers();
+            await hydrateWorkspace(await fbRes.json());
+            return;
+          }
+        }
         const err = await startRes.json().catch(() => ({}));
-        throw new Error(err.detail || `Unable to read video (HTTP ${startRes.status}).`);
+        throw new Error(err.detail || `Unable to open video (HTTP ${startRes.status}).`);
       }
 
       const startJson = await startRes.json();
       if (startJson.status === "completed" && startJson.result) {
-        updateProcessingSteps(4, 95, "4. Opening preview...", "Preparing Clip #1...");
+        updateProcessingSteps(4, 95, "4. Opening Timeline...", "Preparing interactive studio...");
         stopJobTimers();
         await hydrateWorkspace(startJson.result);
         return;
@@ -1717,9 +1908,8 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (err) {
       stopJobTimers();
       if (!activeJobCancelled) {
-        const msg = err.message || "Unable to open this video URL.";
+        const msg = err.message || "Unable to open this video.";
         showView("launcher");
-        setWizardStep(1, "back");
         if (urlStatusHint) {
           urlStatusHint.textContent = msg;
           urlStatusHint.style.color = "var(--danger)";
@@ -1730,8 +1920,76 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // =========================================================
-  // WORKSPACE HYDRATION, HEATMAP, FILTER & QUEUE
+  // WORKSPACE HYDRATION, FILMSTRIP HANDLES & NLE TIMELINE
   // =========================================================
+  function renderFilmstripThumbs() {
+    if (!nleFilmstripThumbs) return;
+    const imgs = (localClientSession && localClientSession.sceneThumbs && localClientSession.sceneThumbs.length)
+      ? localClientSession.sceneThumbs
+      : ["/assets/showcase-podcast.jpg", "/assets/hero-timeline-desk.jpg", "/assets/showcase-longform-slicer.jpg", "/assets/showcase-mobile-capcut.jpg"];
+    let html = "";
+    for (let i = 0; i < 8; i++) {
+      const src = imgs[i % imgs.length];
+      html += `<img src="${src}" alt="" />`;
+    }
+    nleFilmstripThumbs.innerHTML = html;
+  }
+
+  function updateNleSelectionOverlay() {
+    if (!nleSelectionBox || !activeClip || !totalVideoDuration) return;
+    const total = Math.max(1, totalVideoDuration);
+    const leftPct = Math.max(0, Math.min(96, (activeClip.start_time / total) * 100));
+    const widthPct = Math.max(4, Math.min(100 - leftPct, ((activeClip.end_time - activeClip.start_time) / total) * 100));
+    nleSelectionBox.style.left = `${leftPct}%`;
+    nleSelectionBox.style.width = `${widthPct}%`;
+    const rangeLabel = `${formatTime(activeClip.start_time)} - ${formatTime(activeClip.end_time)} (${Math.round(activeClip.end_time - activeClip.start_time)}s)`;
+    if (nleDragReadout) nleDragReadout.textContent = rangeLabel;
+    if (nleTrimLivePill) nleTrimLivePill.textContent = rangeLabel;
+  }
+
+  function setupNleHandleDrag(handleEl, side) {
+    if (!handleEl || !timelineTrackContainer) return;
+    let dragging = false;
+    handleEl.onpointerdown = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!activeClip || !totalVideoDuration) return;
+      dragging = true;
+      if (handleEl.setPointerCapture) handleEl.setPointerCapture(e.pointerId);
+    };
+    handleEl.onpointermove = (e) => {
+      if (!dragging || !activeClip || !totalVideoDuration) return;
+      const rect = timelineTrackContainer.getBoundingClientRect();
+      const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / Math.max(1, rect.width)));
+      const sec = Number((pct * totalVideoDuration).toFixed(2));
+      if (side === "left") {
+        activeClip.start_time = Math.max(0, Math.min(activeClip.end_time - 3, sec));
+        if (previewVideo && isPlayingLiveSource && !localClientSession.isDemoLive) {
+          previewVideo.currentTime = activeClip.start_time;
+        }
+      } else {
+        activeClip.end_time = Math.min(totalVideoDuration, Math.max(activeClip.start_time + 3, sec));
+        if (previewVideo && isPlayingLiveSource && !localClientSession.isDemoLive) {
+          previewVideo.currentTime = Math.max(activeClip.start_time, activeClip.end_time - 0.4);
+        }
+      }
+      activeClip.duration = Number((activeClip.end_time - activeClip.start_time).toFixed(2));
+      updateNleSelectionOverlay();
+      updateTrimmerUI();
+    };
+    handleEl.onpointerup = (e) => {
+      if (!dragging) return;
+      dragging = false;
+      if (handleEl.releasePointerCapture) {
+        try { handleEl.releasePointerCapture(e.pointerId); } catch (_) {}
+      }
+      onClipEdited(true);
+      showToast(`Trimmed: ${formatTime(activeClip.start_time)} - ${formatTime(activeClip.end_time)}`);
+    };
+  }
+  setupNleHandleDrag(nleHandleLeft, "left");
+  setupNleHandleDrag(nleHandleRight, "right");
+
   async function hydrateWorkspace(data) {
     currentVideoInfo = data.video_info || {};
     currentClips = data.clips || [];
@@ -1741,19 +1999,42 @@ document.addEventListener("DOMContentLoaded", () => {
     if (sortClipsSelect) sortClipsSelect.value = "timeline";
     if (chkSelectAllClips) chkSelectAllClips.checked = false;
 
-    const srcType = currentVideoInfo.is_demo ? "DEMO STUDIO" : currentVideoInfo.is_local ? "LOCAL FILE" : "YOUTUBE";
+    if (currentVideoInfo.is_demo && (!localClientSession || localClientSession.isDemoLive)) {
+      localClientSession = {
+        url: currentVideoUrl || "demo://creator-podcast",
+        isDemoLive: true,
+        objectUrl: "/assets/sample_preview.mp4",
+        filename: currentVideoInfo.title || "Demo Studio Reel",
+        duration: totalVideoDuration,
+        width: 1280,
+        height: 720,
+        thumbDataUrl: "/assets/showcase-podcast.jpg",
+        sceneThumbs: [
+          "/assets/showcase-podcast.jpg",
+          "/assets/hero-timeline-desk.jpg",
+          "/assets/showcase-longform-slicer.jpg",
+          "/assets/showcase-mobile-capcut.jpg",
+          "/assets/showcase-captions-studio.jpg",
+          "/assets/showcase-workflow.jpg",
+        ],
+        peaks: buildFallbackPeaks(112),
+      };
+    }
+
+    const srcType = currentVideoInfo.is_demo ? "LIVE DEMO" : currentVideoInfo.is_local ? "LOCAL STUDIO" : "STUDIO";
     headerSourceBadge.textContent = srcType;
     headerSourceBadge.className = currentVideoInfo.is_demo ? "kn-badge kn-badge-blue" : "kn-badge kn-badge-green";
     headerVideoTitle.textContent = currentVideoInfo.title || "Untitled Video";
 
-    videoTitle.textContent = currentVideoInfo.title || "Analyzed Video";
+    videoTitle.textContent = currentVideoInfo.title || "Project Studio";
     videoChannel.textContent = currentVideoInfo.channel || "Creator";
-    videoThumb.src = currentVideoInfo.thumbnail || "/assets/showcase-podcast.jpg";
+    videoThumb.src = (currentVideoInfo.thumbnail && !currentVideoInfo.thumbnail.includes("unsplash")) ? currentVideoInfo.thumbnail : "/assets/showcase-podcast.jpg";
     timelineDurationBadge.textContent = formatTime(totalVideoDuration);
-    clipsFoundBadge.textContent = `${currentClips.length} Clips Found`;
+    clipsFoundBadge.textContent = `${currentClips.length} Clips`;
     countAll.textContent = String(currentClips.length);
 
     showView("workspace");
+    renderFilmstripThumbs();
     syncAspectButtonsFromSelect();
     renderTimelineHeatmap();
     buildDynamicCategoryFilters();
@@ -1761,28 +2042,8 @@ document.addEventListener("DOMContentLoaded", () => {
     updateBatchCountLabel();
 
     if (currentClips.length > 0) {
-      if (currentVideoInfo.is_demo && !renderedClipsMap[currentClips[0].id]) {
-        renderedClipsMap[currentClips[0].id] = {
-          clip_id: "demo_preview",
-          filename: "sample_preview.mp4",
-          download_url: "/assets/sample_preview.mp4",
-          stream_url: "/assets/sample_preview.mp4",
-          duration: currentClips[0].duration,
-          title: currentClips[0].hook_title,
-          size_mb: 2.25,
-          signature: getClipSignature(currentClips[0]),
-          waveform: currentClips[0].waveform_preview,
-        };
-        selectClip(currentClips[0]);
-        showToast(`${currentClips.length} demo clips ready`);
-      } else if (currentVideoInfo.is_local && localClientSession) {
-        selectClip(currentClips[0]);
-        showToast(`${currentClips.length} scenes ready in Live Editor Studio`);
-      } else {
-        showToast(`Found ${currentClips.length} clips — cutting Clip #1 preview...`);
-        selectClip(currentClips[0]);
-        await renderAndPlayClip(currentClips[0]);
-      }
+      selectClip(currentClips[0]);
+      showToast(`${currentClips.length} scenes ready on timeline`);
     }
   }
 
@@ -1801,23 +2062,18 @@ document.addEventListener("DOMContentLoaded", () => {
       span.style.left = `${leftPct}%`;
       span.style.width = `${widthPct}%`;
       span.style.background = bg;
-      span.style.opacity = isSelected ? "1" : "0.62";
-      span.style.boxShadow = isSelected ? "0 0 0 2px #ffffff, 0 0 0 4px var(--brand-violet)" : "none";
+      span.style.opacity = isSelected ? "0.95" : "0.52";
       span.dataset.markerClipId = clip.id;
 
-      span.innerHTML = `
-        <div class="heatmap-tooltip kn-tabular">
-          #${clip.index} &middot; ${formatTime(clip.start_time)}-${formatTime(clip.end_time)} (${Math.round(clip.duration)}s)
-        </div>
-      `;
-
-      span.addEventListener("click", () => {
+      span.addEventListener("click", (ev) => {
+        ev.stopPropagation();
         selectClip(clip);
         const card = document.querySelector(`[data-clip-id="${clip.id}"]`);
         if (card) card.scrollIntoView({ behavior: "smooth", block: "nearest" });
       });
       timelineTrack.appendChild(span);
     });
+    updateNleSelectionOverlay();
   }
 
   function buildDynamicCategoryFilters() {
@@ -1945,7 +2201,7 @@ document.addEventListener("DOMContentLoaded", () => {
       card.querySelector(".btn-card-render").addEventListener("click", async (e) => {
         e.stopPropagation();
         selectClip(clip);
-        setMobilePane("preview");
+        setMobilePane("inspector", "captions");
         if (isFreshRendered) {
           loadVideoPlayer(rendered);
         } else {
@@ -1974,7 +2230,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       card.addEventListener("click", () => {
         selectClip(clip);
-        setMobilePane("preview");
+        setMobilePane("inspector", "captions");
       });
       clipCardsList.appendChild(card);
     });
@@ -2020,7 +2276,7 @@ document.addEventListener("DOMContentLoaded", () => {
     previewVideo.style.objectFit = isBlurLayout ? "contain" : "cover";
     previewVideo.style.filter = (studioFilterSelect && studioFilterSelect.value) ? studioFilterSelect.value : "none";
 
-    const zoomVal = studioZoomSelect ? (parseFloat(studioZoomSelect.value) || 1) : 1;
+    const zoomVal = Math.max(1, parseFloat((zoomRangeSlider && zoomRangeSlider.value) || (studioZoomSelect && studioZoomSelect.value) || "1") || 1);
     const panVal = studioPanSelect ? studioPanSelect.value : "center";
     const originX = panVal === "left" ? "18%" : panVal === "right" ? "82%" : "50%";
     previewVideo.style.transformOrigin = `${originX} 50%`;
@@ -2040,6 +2296,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function startLiveLocalStage(clip) {
     if (!localClientSession || !localClientSession.objectUrl || !clip) return;
     isPlayingLiveSource = true;
+    demoVirtualPos = 0;
     if (stageErrorOverlay) stageErrorOverlay.classList.add("hidden");
     if (playerPlaceholder) playerPlaceholder.classList.add("hidden");
     if (previewVideo) previewVideo.classList.remove("hidden");
@@ -2047,12 +2304,27 @@ document.addEventListener("DOMContentLoaded", () => {
 
     applyVideoStageTransform();
     if (previewVideo) {
-      if (previewVideo.getAttribute("data-live-url") !== localClientSession.objectUrl) {
+      const changedSrc = previewVideo.getAttribute("data-live-url") !== localClientSession.objectUrl;
+      if (changedSrc) {
         previewVideo.src = localClientSession.objectUrl;
         previewVideo.setAttribute("data-live-url", localClientSession.objectUrl);
       }
       previewVideo.playbackRate = speedSteps[speedIdx];
-      previewVideo.currentTime = Math.max(0, clip.start_time || 0);
+      const seekSafe = () => {
+        if (localClientSession.isDemoLive) {
+          const vd = Math.max(3, previewVideo.duration || 12);
+          const off = (clip.start_time || 0) % Math.max(1.5, vd - 1.5);
+          previewVideo.currentTime = off;
+          demoLastVideoTime = off;
+        } else {
+          previewVideo.currentTime = Math.max(0, clip.start_time || 0);
+        }
+      };
+      if (previewVideo.readyState >= 1) {
+        seekSafe();
+      } else {
+        previewVideo.onloadedmetadata = () => seekSafe();
+      }
       previewVideo.play().then(() => {
         if (playPauseIcon) { playPauseIcon.setAttribute("data-lucide", "pause"); refreshIcons(); }
       }).catch(() => {
@@ -2070,7 +2342,9 @@ document.addEventListener("DOMContentLoaded", () => {
         previewBackdrop.setAttribute("data-live-url", localClientSession.objectUrl);
       }
       previewBackdrop.playbackRate = speedSteps[speedIdx];
-      previewBackdrop.currentTime = Math.max(0, clip.start_time || 0);
+      if (!localClientSession.isDemoLive) {
+        previewBackdrop.currentTime = Math.max(0, clip.start_time || 0);
+      }
       previewBackdrop.play().catch(() => {});
     }
 
@@ -2081,7 +2355,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (liveRetentionFill) liveRetentionFill.style.width = "0%";
     if (btnDownloadClip) {
       const span = btnDownloadClip.querySelector("span");
-      if (span) span.textContent = "Export & Download 1080p MP4";
+      if (span) span.textContent = "Export MP4";
     }
   }
 
@@ -2108,7 +2382,7 @@ document.addEventListener("DOMContentLoaded", () => {
       isPlayingLiveSource = false;
       loadVideoPlayer(rendered);
       initWaveform(rendered.waveform || clip.waveform_preview);
-    } else if (currentVideoInfo && currentVideoInfo.is_local && localClientSession) {
+    } else if (localClientSession && localClientSession.objectUrl) {
       startLiveLocalStage(clip);
       initWaveform(clip.waveform_preview);
     } else {
@@ -2124,7 +2398,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (btnDownloadClip) {
         const span = btnDownloadClip.querySelector("span");
-        if (span) span.textContent = "Cut & Download MP4";
+        if (span) span.textContent = "Export MP4";
       }
 
       renderStatusHint.textContent = rendered
@@ -2202,7 +2476,15 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         const rendered = renderedClipsMap[clip.id];
         if (isPlayingLiveSource) {
-          previewVideo.currentTime = Math.max(clip.start_time, Math.min(clip.end_time - 0.2, w.start));
+          if (localClientSession && localClientSession.isDemoLive) {
+            demoVirtualPos = Math.max(0, Math.min((clip.end_time - clip.start_time) - 0.2, w.start - clip.start_time));
+            const vd = Math.max(1, previewVideo.duration || 10);
+            const tgt = (w.start % Math.max(1, vd - 1));
+            previewVideo.currentTime = tgt;
+            demoLastVideoTime = tgt;
+          } else {
+            previewVideo.currentTime = Math.max(clip.start_time, Math.min(clip.end_time - 0.2, w.start));
+          }
           previewVideo.play().catch(() => {});
           updateLiveSubtitles(w.start);
         } else if (rendered && rendered.signature === getClipSignature(clip)) {
@@ -2310,12 +2592,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (captionSizeSelect) {
     captionSizeSelect.addEventListener("change", () => {
-      if (activeClip) updateLiveSubtitles(previewVideo ? (isPlayingLiveSource ? previewVideo.currentTime : activeClip.start_time + (previewVideo.currentTime || 0)) : activeClip.start_time);
+      if (activeClip) updateLiveSubtitles(getCurrentAbsTime());
     });
   }
   if (captionPosSelect) {
     captionPosSelect.addEventListener("change", () => {
-      if (activeClip) updateLiveSubtitles(previewVideo ? (isPlayingLiveSource ? previewVideo.currentTime : activeClip.start_time + (previewVideo.currentTime || 0)) : activeClip.start_time);
+      if (activeClip) updateLiveSubtitles(getCurrentAbsTime());
     });
   }
 
@@ -2379,7 +2661,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (timelineTrackContainer) {
     timelineTrackContainer.addEventListener("click", (e) => {
-      if (e.target.closest(".heatmap-span")) return;
+      if (e.target.closest(".heatmap-span") || e.target.closest(".kn-nle-handle") || e.target.closest("#nleSelectionBox")) return;
       const rect = timelineTrackContainer.getBoundingClientRect();
       const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / Math.max(1, rect.width)));
       const clickedSec = pct * (totalVideoDuration || 60);
@@ -2418,11 +2700,12 @@ document.addEventListener("DOMContentLoaded", () => {
   function onClipEdited(refreshQueue = true) {
     if (!activeClip) return;
     updateTrimmerUI();
+    renderTimelineHeatmap();
     renderInteractiveTranscript(activeClip);
     updateLiveStagePreview();
     if (refreshQueue) renderClipsQueue();
 
-    const isLocalLive = currentVideoInfo && currentVideoInfo.is_local && localClientSession;
+    const isLocalLive = Boolean(localClientSession && localClientSession.objectUrl);
     const rendered = renderedClipsMap[activeClip.id];
 
     if (isLocalLive && (!rendered || rendered.signature !== getClipSignature(activeClip))) {
@@ -2431,11 +2714,15 @@ document.addEventListener("DOMContentLoaded", () => {
       if (previewVideo) previewVideo.classList.remove("hidden");
       if (btnToggleSound) btnToggleSound.classList.remove("hidden");
       applyVideoStageTransform();
-      if (previewVideo && (previewVideo.currentTime < activeClip.start_time || previewVideo.currentTime > activeClip.end_time)) {
+      if (previewVideo && !localClientSession.isDemoLive && (previewVideo.currentTime < activeClip.start_time || previewVideo.currentTime > activeClip.end_time)) {
         previewVideo.currentTime = activeClip.start_time;
       }
       updateLiveBanner();
-      updateLiveSubtitles(previewVideo ? previewVideo.currentTime : activeClip.start_time);
+      updateLiveWatermark();
+      const absNow = localClientSession.isDemoLive
+        ? activeClip.start_time + demoVirtualPos
+        : (previewVideo ? previewVideo.currentTime : activeClip.start_time);
+      updateLiveSubtitles(absNow);
       initWaveform(activeClip.waveform_preview);
       return;
     }
@@ -2573,7 +2860,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     try {
       let clipData;
-      if (currentVideoUrl && currentVideoUrl.startsWith("local://browser/") && localClientSession) {
+      const shouldUseCanvasExport = (currentVideoUrl && currentVideoUrl.startsWith("local://browser/") && localClientSession)
+        || (localClientSession && localClientSession.isDemoLive && (isServerlessEnv || !apiConnected));
+      if (shouldUseCanvasExport) {
         clearInterval(renderTimerInterval);
         clipData = await cutClientLocalClip(clip);
       } else {
@@ -2834,14 +3123,25 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   if (captionAnimSelect) {
     captionAnimSelect.addEventListener("change", () => {
-      if (activeClip) updateLiveSubtitles(previewVideo ? (isPlayingLiveSource ? previewVideo.currentTime : activeClip.start_time + (previewVideo.currentTime || 0)) : activeClip.start_time);
+      if (activeClip) updateLiveSubtitles(getCurrentAbsTime());
       onClipEdited(false);
     });
   }
 
+  function getCurrentAbsTime() {
+    if (!activeClip) return 0;
+    if (!isPlayingLiveSource) {
+      return activeClip.start_time + (previewVideo ? previewVideo.currentTime || 0 : 0);
+    }
+    if (localClientSession && localClientSession.isDemoLive) {
+      return activeClip.start_time + demoVirtualPos;
+    }
+    return previewVideo ? (previewVideo.currentTime || activeClip.start_time) : activeClip.start_time;
+  }
+
   function splitActiveClipAtPlayhead() {
     if (!activeClip || !previewVideo) return;
-    const curAbs = isPlayingLiveSource ? (previewVideo.currentTime || 0) : (activeClip.start_time + (previewVideo.currentTime || 0));
+    const curAbs = getCurrentAbsTime();
     if (curAbs <= activeClip.start_time + 2 || curAbs >= activeClip.end_time - 2) {
       return showToast("Scrub at least 2s away from start/end edges before splitting", true);
     }
@@ -2868,7 +3168,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const curIdx = currentClips.indexOf(activeClip);
     currentClips.splice(curIdx + 1, 0, part2);
     currentClips.forEach((c, i) => { c.index = i + 1; });
-    if (clipsFoundBadge) clipsFoundBadge.textContent = `${currentClips.length} Clips Found`;
+    if (clipsFoundBadge) clipsFoundBadge.textContent = `${currentClips.length} Clips`;
     if (countAll) countAll.textContent = String(currentClips.length);
     buildDynamicCategoryFilters();
     selectClip(part2);
@@ -2888,7 +3188,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const curIdx = currentClips.indexOf(activeClip);
     currentClips.splice(curIdx + 1, 0, clone);
     currentClips.forEach((c, i) => { c.index = i + 1; });
-    if (clipsFoundBadge) clipsFoundBadge.textContent = `${currentClips.length} Clips Found`;
+    if (clipsFoundBadge) clipsFoundBadge.textContent = `${currentClips.length} Clips`;
     if (countAll) countAll.textContent = String(currentClips.length);
     buildDynamicCategoryFilters();
     selectClip(clone);
@@ -2902,7 +3202,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const idx = currentClips.indexOf(activeClip);
     currentClips.splice(idx, 1);
     currentClips.forEach((c, i) => { c.index = i + 1; });
-    if (clipsFoundBadge) clipsFoundBadge.textContent = `${currentClips.length} Clips Found`;
+    if (clipsFoundBadge) clipsFoundBadge.textContent = `${currentClips.length} Clips`;
     if (countAll) countAll.textContent = String(currentClips.length);
     buildDynamicCategoryFilters();
     const nextClip = currentClips[Math.min(idx, currentClips.length - 1)];
@@ -2944,7 +3244,10 @@ document.addEventListener("DOMContentLoaded", () => {
   if (btnJumpBack) {
     btnJumpBack.addEventListener("click", () => {
       if (!previewVideo) return;
-      if (isPlayingLiveSource && activeClip) {
+      if (isPlayingLiveSource && activeClip && localClientSession && localClientSession.isDemoLive) {
+        demoVirtualPos = Math.max(0, demoVirtualPos - 2);
+        updateLiveSubtitles(activeClip.start_time + demoVirtualPos);
+      } else if (isPlayingLiveSource && activeClip) {
         previewVideo.currentTime = Math.max(activeClip.start_time, previewVideo.currentTime - 2);
       } else {
         previewVideo.currentTime = Math.max(0, previewVideo.currentTime - 2);
@@ -2954,7 +3257,11 @@ document.addEventListener("DOMContentLoaded", () => {
   if (btnJumpForward) {
     btnJumpForward.addEventListener("click", () => {
       if (!previewVideo) return;
-      if (isPlayingLiveSource && activeClip) {
+      if (isPlayingLiveSource && activeClip && localClientSession && localClientSession.isDemoLive) {
+        const dur = Math.max(1, activeClip.end_time - activeClip.start_time);
+        demoVirtualPos = Math.min(dur - 0.2, demoVirtualPos + 2);
+        updateLiveSubtitles(activeClip.start_time + demoVirtualPos);
+      } else if (isPlayingLiveSource && activeClip) {
         previewVideo.currentTime = Math.min(activeClip.end_time - 0.15, previewVideo.currentTime + 2);
       } else {
         previewVideo.currentTime = Math.min(previewVideo.duration || 9999, previewVideo.currentTime + 2);
@@ -2964,10 +3271,10 @@ document.addEventListener("DOMContentLoaded", () => {
   if (btnSetMarkIn) {
     btnSetMarkIn.addEventListener("click", () => {
       if (!activeClip || !previewVideo) return;
-      const cur = previewVideo.currentTime || 0;
-      const absNow = isPlayingLiveSource ? cur : (activeClip.start_time + cur);
+      const absNow = getCurrentAbsTime();
       if (absNow < activeClip.end_time - 2) {
         activeClip.start_time = Number(Math.max(0, absNow).toFixed(2));
+        demoVirtualPos = 0;
         onClipEdited();
         showToast(`Marked Start: ${formatTime(activeClip.start_time)}`);
       } else {
@@ -2978,8 +3285,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (btnSetMarkOut) {
     btnSetMarkOut.addEventListener("click", () => {
       if (!activeClip || !previewVideo) return;
-      const cur = previewVideo.currentTime || 0;
-      const absNow = isPlayingLiveSource ? cur : (activeClip.start_time + cur);
+      const absNow = getCurrentAbsTime();
       if (absNow > activeClip.start_time + 2) {
         activeClip.end_time = Number(Math.min(totalVideoDuration || 36000, absNow).toFixed(2));
         onClipEdited();
@@ -3098,7 +3404,16 @@ document.addEventListener("DOMContentLoaded", () => {
     const pct = Math.max(0, Math.min(1, (clientX - rect.left) / Math.max(1, rect.width)));
     if (isPlayingLiveSource && activeClip) {
       const dur = Math.max(1, activeClip.end_time - activeClip.start_time);
-      previewVideo.currentTime = activeClip.start_time + pct * dur;
+      if (localClientSession && localClientSession.isDemoLive) {
+        demoVirtualPos = pct * dur;
+        const vd = Math.max(1, previewVideo.duration || 10);
+        const tgt = pct * vd;
+        previewVideo.currentTime = tgt;
+        demoLastVideoTime = tgt;
+        updateLiveSubtitles(activeClip.start_time + demoVirtualPos);
+      } else {
+        previewVideo.currentTime = activeClip.start_time + pct * dur;
+      }
     } else if (previewVideo.duration) {
       previewVideo.currentTime = pct * previewVideo.duration;
     }
@@ -3153,7 +3468,18 @@ document.addEventListener("DOMContentLoaded", () => {
       let rel = previewVideo.currentTime || 0;
       let absT = activeClip.start_time + rel;
 
-      if (isPlayingLiveSource) {
+      if (isPlayingLiveSource && localClientSession && localClientSession.isDemoLive) {
+        dur = Math.max(1, activeClip.end_time - activeClip.start_time);
+        const curV = previewVideo.currentTime || 0;
+        const vd = Math.max(1, previewVideo.duration || 10);
+        let delta = curV - demoLastVideoTime;
+        if (delta < 0) delta += vd;
+        if (delta > 1.2) delta = 0.25;
+        demoLastVideoTime = curV;
+        demoVirtualPos = (demoVirtualPos + delta) % dur;
+        rel = demoVirtualPos;
+        absT = activeClip.start_time + rel;
+      } else if (isPlayingLiveSource) {
         dur = Math.max(1, activeClip.end_time - activeClip.start_time);
         if (previewVideo.currentTime >= activeClip.end_time - 0.08) {
           previewVideo.currentTime = activeClip.start_time;
@@ -3218,7 +3544,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const sig = getClipSignature(clip);
       try {
         let clipData = null;
-        if (currentVideoUrl && currentVideoUrl.startsWith("local://browser/") && localClientSession) {
+        const shouldUseCanvasExport = (currentVideoUrl && currentVideoUrl.startsWith("local://browser/") && localClientSession)
+          || (localClientSession && localClientSession.isDemoLive && (isServerlessEnv || !apiConnected));
+        if (shouldUseCanvasExport) {
           clipData = await cutClientLocalClip(clip);
         } else {
           const res = await fetch(`${API_BASE}/api/generate-clip`, {
@@ -3356,7 +3684,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     try {
       let blob = null;
-      const isClientOnlyMode = !apiConnected || (currentVideoUrl && currentVideoUrl.startsWith("local://browser/"));
+      const isClientOnlyMode = !apiConnected || isServerlessEnv || (currentVideoUrl && currentVideoUrl.startsWith("local://browser/"));
       let res = null;
       if (!isClientOnlyMode) {
         if (selectedFilenames.length > 0) {
