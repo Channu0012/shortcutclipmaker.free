@@ -119,10 +119,10 @@
 
       <div style="text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px;">
         <h1 class="kn-display">
-          Long videos to crisp clips.
+          Drop any video. Get viral clips.
         </h1>
-        <p class="kn-subtitle" style="max-width: 540px;">
-          Paste a YouTube link or drop a recording, choose how many clips you want, and preview your first cut in seconds.
+        <p class="kn-subtitle" style="max-width: 580px;">
+          Upload any podcast, interview, or lecture of any length. AI discovers the highest-retention moments with timeline trimming, word-level caption editing, and 1080p export.
         </p>
 
         <!-- Clean Wayfinding Pill -->
@@ -148,24 +148,61 @@
       <section class="kn-card" style="padding: 24px;">
         <form id="clipForm" novalidate>
 
-          <!-- STEP 1: EMPTY LINK INPUT + UPLOAD + INSTANT DEMO -->
+          <!-- STEP 1: UPLOAD FIRST + LINK BACKUP + INSTANT DEMO -->
           <div id="wizardStep1" style="display: flex; flex-direction: column; gap: 18px;">
             <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
               <div class="kn-segmented" role="tablist" aria-label="Source Mode">
-                <button type="button" id="tabSourceYoutube" class="kn-seg-btn active kn-pressable" role="tab" aria-selected="true">
-                  <i data-lucide="youtube" style="width: 14px; height: 14px; color: #dc2626;"></i>
-                  <span>YouTube Link</span>
-                </button>
-                <button type="button" id="tabSourceUpload" class="kn-seg-btn kn-pressable" role="tab" aria-selected="false">
+                <button type="button" id="tabSourceUpload" class="kn-seg-btn active kn-pressable" role="tab" aria-selected="true">
                   <i data-lucide="upload-cloud" style="width: 14px; height: 14px;"></i>
                   <span>Upload Video</span>
                 </button>
+                <button type="button" id="tabSourceYoutube" class="kn-seg-btn kn-pressable" role="tab" aria-selected="false">
+                  <i data-lucide="youtube" style="width: 14px; height: 14px; color: #dc2626;"></i>
+                  <span>YouTube Link</span>
+                </button>
               </div>
-              <span id="urlStatusHint" style="font-size: 12px; color: var(--text-secondary);">Paste any public YouTube link</span>
+              <span id="urlStatusHint" style="font-size: 12px; color: var(--text-secondary);">Direct file uploads work offline for any size or length</span>
             </div>
 
-            <!-- YouTube Link Input (Clean & Empty on Load) -->
-            <div id="youtubeSourcePanel">
+            <!-- Upload Panel (Primary Focus) -->
+            <div id="uploadSourcePanel">
+              <label for="fileUploadInput" id="dropZone" class="kn-pressable kn-upload-hero">
+                <div class="kn-upload-hero-icon">
+                  <i data-lucide="film" style="width: 26px; height: 26px; color: var(--brand-violet);"></i>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 4px; align-items: center;">
+                  <p id="uploadLabelText" style="font-size: 15.5px; font-weight: 700; color: var(--text-primary); margin: 0;">Drop MP4, MOV, MKV, or WEBM footage here</p>
+                  <p style="font-size: 12.5px; color: var(--text-secondary); margin: 0;">No file size or length limit. Analyzes audio energy peaks &amp; cuts offline in-browser.</p>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px; margin-top: 2px;">
+                  <span class="kn-pressable kn-btn-secondary" style="min-height: 36px; padding: 6px 18px; font-size: 12px;">
+                    <i data-lucide="folder-open" style="width: 14px; height: 14px; color: var(--brand-violet);"></i>
+                    <span>Browse Computer Files</span>
+                  </span>
+                </div>
+                <input type="file" id="fileUploadInput" accept=".mp4,.mov,.mkv,.webm,.m4v,video/*" class="hidden" />
+              </label>
+
+              <!-- Dynamic Selected File Metadata Card -->
+              <div id="fileUploadMeta" class="hidden kn-file-meta-card" style="margin-top: 12px;">
+                <div style="display: flex; align-items: center; gap: 12px; min-width: 0;">
+                  <div style="width: 44px; height: 44px; border-radius: 10px; background: var(--brand-violet-soft); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                    <i data-lucide="check-circle" style="width: 20px; height: 20px; color: var(--success);"></i>
+                  </div>
+                  <div style="min-width: 0;">
+                    <div id="metaFileName" style="font-size: 13.5px; font-weight: 700; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">video.mp4</div>
+                    <div id="metaFileDetails" style="font-size: 11.5px; color: var(--text-secondary); margin-top: 2px;">Ready in Browser Engine</div>
+                  </div>
+                </div>
+                <button type="button" id="btnMetaProceed" class="kn-pressable kn-btn-primary" style="min-height: 36px; padding: 6px 14px; font-size: 12px; flex-shrink: 0;">
+                  <span>Choose Clips</span>
+                  <i data-lucide="arrow-right" style="width: 14px; height: 14px;"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- YouTube Link Input (Secondary Option) -->
+            <div id="youtubeSourcePanel" class="hidden">
               <div style="position: relative; display: flex; align-items: center;">
                 <i data-lucide="link-2" style="position: absolute; left: 16px; width: 17px; height: 17px; color: var(--brand-violet); pointer-events: none;"></i>
                 <input
@@ -183,18 +220,6 @@
                   <span>Paste</span>
                 </button>
               </div>
-            </div>
-
-            <!-- Upload Panel -->
-            <div id="uploadSourcePanel" class="hidden">
-              <label for="fileUploadInput" id="dropZone" class="kn-pressable" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; border: 2px dashed rgba(17, 19, 25, 0.14); border-radius: 16px; padding: 30px 18px; background: var(--bg-subtle); text-align: center;">
-                <div style="width: 46px; height: 46px; border-radius: 50%; background: var(--brand-violet-soft); display: flex; align-items: center; justify-content: center;">
-                  <i data-lucide="film" style="width: 21px; height: 21px; color: var(--brand-violet);"></i>
-                </div>
-                <p id="uploadLabelText" style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;">Drop MP4, MOV, MKV, or WEBM footage here</p>
-                <p style="font-size: 12px; color: var(--text-secondary); margin: 0;">Direct file uploads work reliably across desktop and cloud</p>
-                <input type="file" id="fileUploadInput" accept=".mp4,.mov,.mkv,.webm,.m4v,video/*" class="hidden" />
-              </label>
             </div>
 
             <!-- Action Row -->
@@ -434,9 +459,9 @@
             </div>
             <div style="padding: 18px 20px 22px; display: flex; flex-direction: column; gap: 6px;">
               <span style="font-size: 11px; font-weight: 700; color: var(--brand-violet); letter-spacing: 0.04em;">STEP 01</span>
-              <h3 style="font-size: 16px; font-weight: 700; margin: 0; color: var(--text-primary);">Add a link or video</h3>
+              <h3 style="font-size: 16px; font-weight: 700; margin: 0; color: var(--text-primary);">Drop any length video</h3>
               <p style="font-size: 13.5px; color: var(--text-secondary); margin: 0; line-height: 1.5;">
-                Paste any YouTube URL or upload MP4, MOV, MKV, or WEBM footage straight from your phone or computer.
+                Upload MP4, MOV, MKV, or WEBM recordings straight from your device with zero server upload wait or length caps.
               </p>
             </div>
           </article>
@@ -447,9 +472,9 @@
             </div>
             <div style="padding: 18px 20px 22px; display: flex; flex-direction: column; gap: 6px;">
               <span style="font-size: 11px; font-weight: 700; color: var(--brand-violet); letter-spacing: 0.04em;">STEP 02</span>
-              <h3 style="font-size: 16px; font-weight: 700; margin: 0; color: var(--text-primary);">Pick count &amp; framing</h3>
+              <h3 style="font-size: 16px; font-weight: 700; margin: 0; color: var(--text-primary);">Discover &amp; adjust clips</h3>
               <p style="font-size: 13.5px; color: var(--text-secondary); margin: 0; line-height: 1.5;">
-                Choose between 5 and 20 clips, set target length from 15 seconds to 4 minutes, and match your caption style.
+                Find high-energy scenes, slice custom moments on the timeline, reframe speakers, and pick your viral caption preset.
               </p>
             </div>
           </article>
@@ -460,9 +485,9 @@
             </div>
             <div style="padding: 18px 20px 22px; display: flex; flex-direction: column; gap: 6px;">
               <span style="font-size: 11px; font-weight: 700; color: var(--success); letter-spacing: 0.04em;">STEP 03</span>
-              <h3 style="font-size: 16px; font-weight: 700; margin: 0; color: var(--text-primary);">Preview, refine, save</h3>
+              <h3 style="font-size: 16px; font-weight: 700; margin: 0; color: var(--text-primary);">Add captions &amp; export</h3>
               <p style="font-size: 13.5px; color: var(--text-secondary); margin: 0; line-height: 1.5;">
-                Your first clip renders automatically for playback. Adjust boundaries, edit any spoken word, and save MP4 or ZIP.
+                Preview live synchronized subtitles in real time, tweak every spoken word or script, and download crisp 1080p clips or ZIP.
               </p>
             </div>
           </article>
@@ -472,27 +497,27 @@
       <!-- Practical Usage Guide ("Use it wisely") -->
       <section class="kn-reveal kn-card" style="padding: 28px; display: flex; flex-direction: column; gap: 20px;">
         <div style="display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
-          <h2 style="font-size: 20px; font-weight: 700; letter-spacing: -0.025em; margin: 0;">How to get the cleanest clips</h2>
-          <span style="font-size: 12.5px; color: var(--text-secondary);">Practical tips for desktop &amp; mobile</span>
+          <h2 style="font-size: 20px; font-weight: 700; letter-spacing: -0.025em; margin: 0;">Studio Pro Workflow Tips</h2>
+          <span style="font-size: 12.5px; color: var(--text-secondary);">Practical shortcuts for faster editing</span>
         </div>
 
         <div class="grid-3">
           <div class="kn-subcard" style="padding: 16px; display: flex; flex-direction: column; gap: 6px;">
-            <div style="font-size: 13.5px; font-weight: 700; color: var(--text-primary);">YouTube links &amp; file uploads</div>
+            <div style="font-size: 13.5px; font-weight: 700; color: var(--text-primary);">Zero-wait local studio</div>
             <p style="font-size: 13px; color: var(--text-secondary); margin: 0; line-height: 1.55;">
-              Public YouTube videos cut smoothly when running locally. On cloud hosts where YouTube limits automated streams, use <strong>Upload Video</strong> with an MP4 file or paste YouTube cookies in Settings.
+              Drop any large MP4/MOV file directly into <strong>Upload Video</strong> to scan peaks, scrub the timeline, add captions, and render offline in your browser.
             </p>
           </div>
           <div class="kn-subcard" style="padding: 16px; display: flex; flex-direction: column; gap: 6px;">
-            <div style="font-size: 13.5px; font-weight: 700; color: var(--text-primary);">Fix a single word before render</div>
+            <div style="font-size: 13.5px; font-weight: 700; color: var(--text-primary);">Write or dictate captions</div>
             <p style="font-size: 13px; color: var(--text-secondary); margin: 0; line-height: 1.55;">
-              Inside the Studio Adjust panel, tap <strong>Edit Words</strong> to fix speaker names or phrasing cleanly before burning the final captions into the MP4.
+              Inside the Adjust panel, tap <strong>Add Script</strong> to paste speech text or use Voice Dictate, then hit <strong>Sync Captions</strong> for timed karaoke words.
             </p>
           </div>
           <div class="kn-subcard" style="padding: 16px; display: flex; flex-direction: column; gap: 6px;">
-            <div style="font-size: 13.5px; font-weight: 700; color: var(--text-primary);">Tighten start and end points</div>
+            <div style="font-size: 13.5px; font-weight: 700; color: var(--text-primary);">Keyboard &amp; speaker framing</div>
             <p style="font-size: 13px; color: var(--text-secondary); margin: 0; line-height: 1.55;">
-              Use the <strong>-5s / +5s</strong> controls or drag across the audio energy waveform to snap a cut right to the opening hook or closing punchline.
+              Use <strong>Space</strong> to play/pause, <strong>I / O</strong> to mark start and end cuts, and <strong>Focus Left / Right</strong> to reframe two-person podcasts cleanly.
             </p>
           </div>
         </div>
@@ -587,16 +612,22 @@
       </div>
     </div>
 
-    <!-- Retention Heatmap -->
+    <!-- Retention Heatmap & Custom Timeline Slicer -->
     <div class="kn-card" style="padding: 12px 16px;">
-      <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; font-size: 12px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; font-size: 12px; flex-wrap: wrap;">
         <span style="font-weight: 700; color: var(--text-primary); display: inline-flex; align-items: center; gap: 6px;">
           <i data-lucide="activity" style="width: 14px; height: 14px; color: var(--brand-violet);"></i>
-          <span>Timeline Highlights</span>
+          <span>Full Video Timeline &amp; Scenes</span>
         </span>
-        <span class="hide-xs" style="font-size: 11.5px; color: var(--text-secondary);">Click any segment to jump to that clip</span>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span class="hide-xs" style="font-size: 11.5px; color: var(--text-secondary);">Click any segment or empty track to jump or slice</span>
+          <button type="button" id="btnAddNewClip" class="kn-pressable kn-icon-btn" style="min-height: 28px; padding: 3px 10px; font-size: 11px; color: var(--brand-violet); font-weight: 700;">
+            <i data-lucide="plus" style="width: 13px; height: 13px;"></i>
+            <span>New Clip</span>
+          </button>
+        </div>
       </div>
-      <div id="timelineTrackContainer" style="position: relative; width: 100%; height: 28px; background: var(--bg-subtle); border-radius: 10px; border: 1px solid var(--border-hairline); overflow: visible;">
+      <div id="timelineTrackContainer" style="position: relative; width: 100%; height: 28px; background: var(--bg-subtle); border-radius: 10px; border: 1px solid var(--border-hairline); overflow: visible; cursor: crosshair;" title="Click any timestamp to jump or double-click to slice a clip">
         <div id="timelineTrack" style="position: relative; width: 100%; height: 100%;"></div>
       </div>
     </div>
@@ -666,13 +697,28 @@
         <div id="deviceFrame">
           <div style="position: relative; width: 100%; height: 100%; border-radius: 23px; overflow: hidden; background: #0f1117; display: flex; align-items: center; justify-content: center;">
 
-            <video id="previewVideo" class="hidden" style="width: 100%; height: 100%; object-fit: cover;" controls playsinline muted loop></video>
+            <!-- Ambient Blurred Backdrop for Horizontal-to-Vertical Studio Reframing -->
+            <video id="previewBackdrop" class="hidden" style="position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; object-fit: cover; filter: blur(22px) brightness(0.45) saturate(1.25); transform: scale(1.12); pointer-events: none;" playsinline muted loop></video>
+
+            <video id="previewVideo" class="hidden" style="position: relative; z-index: 10; width: 100%; height: 100%; object-fit: contain; cursor: pointer; transition: filter 160ms ease, transform 200ms var(--ease-spring);" playsinline muted loop></video>
 
             <iframe id="sourceYoutubeFrame" class="hidden" style="width: 100%; height: 100%; border: none; border-radius: 23px;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
 
             <button type="button" id="btnToggleSound" class="hidden kn-pressable" style="position: absolute; top: 12px; right: 12px; z-index: 40; width: 34px; height: 34px; border-radius: 50%; background: rgba(0, 0, 0, 0.58); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.22); color: #ffffff; display: flex; align-items: center; justify-content: center;" title="Unmute / Mute Audio">
               <i data-lucide="volume-x" id="soundIcon" style="width: 15px; height: 15px; color: #fbbf24;"></i>
             </button>
+
+            <!-- Live Top Hook Banner Overlay during Studio Playback -->
+            <div id="liveBannerOverlay" class="hidden" style="position: absolute; top: 8%; left: 6%; right: 6%; z-index: 35; pointer-events: none; display: flex; justify-content: center;">
+              <div id="liveBannerOverlayText" style="max-width: 94%; padding: 6px 12px; border-radius: 10px; background: rgba(15, 17, 25, 0.88); backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, 0.20); font-size: 11.5px; font-weight: 800; color: #ffffff; text-transform: uppercase; line-height: 1.3; text-align: center; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);">
+                Title Banner Preview
+              </div>
+            </div>
+
+            <!-- Real-Time Subtitle Live Track (Synchronized Karaoke Overlay) -->
+            <div id="liveSubtitleTrack" class="live-subtitle-overlay hidden">
+              <div id="liveCaptionBox" class="live-caption-box"></div>
+            </div>
 
             <!-- Pre-Render Stage Preview Poster -->
             <div id="playerPlaceholder" style="position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; padding: 18px 14px; text-align: center; background: linear-gradient(180deg, #1b1d25 0%, #0b0c10 100%); color: #ffffff;">
@@ -721,21 +767,83 @@
           </div>
         </div>
 
+        <!-- Pro Transport & Scrub Controls -->
+        <div class="kn-transport-bar">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <button type="button" id="btnPlayPause" class="kn-pressable kn-transport-btn btn-play-hero" title="Play / Pause (Space)">
+              <i data-lucide="play" id="playPauseIcon" style="width: 15px; height: 15px;"></i>
+            </button>
+            <button type="button" id="btnJumpBack" class="kn-pressable kn-transport-btn" title="Back 2s (J / Left)">
+              <i data-lucide="rotate-ccw" style="width: 14px; height: 14px;"></i>
+            </button>
+            <button type="button" id="btnJumpForward" class="kn-pressable kn-transport-btn" title="Forward 2s (L / Right)">
+              <i data-lucide="rotate-cw" style="width: 14px; height: 14px;"></i>
+            </button>
+            <button type="button" id="btnSetMarkIn" class="kn-pressable kn-icon-btn" style="min-height: 28px; padding: 3px 8px; font-size: 11px; margin-left: 2px;" title="Mark Start Here (I)">[ In</button>
+            <button type="button" id="btnSetMarkOut" class="kn-pressable kn-icon-btn" style="min-height: 28px; padding: 3px 8px; font-size: 11px;" title="Mark End Here (O)">Out ]</button>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span id="playheadTimecode" class="kn-tabular" style="font-size: 11.5px; font-weight: 700; color: var(--brand-violet);">0:00 / 0:00</span>
+          </div>
+        </div>
+
         <!-- 1:1 Pointer-Capture Audio Energy Waveform Scrubber -->
         <div class="kn-subcard" style="width: 100%; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;">
           <div style="display: flex; align-items: center; justify-content: space-between; font-size: 11px;">
-            <span style="font-weight: 600; color: var(--text-primary);">Audio Energy Scrubber</span>
+            <span style="font-weight: 600; color: var(--text-primary); display: inline-flex; align-items: center; gap: 5px;">
+              <span>Audio Energy Scrubber</span>
+              <span class="hide-xs" style="color: var(--text-tertiary); font-weight: 500;">(Drag / Space / I / O)</span>
+            </span>
             <span id="waveformTimecode" class="kn-tabular" style="font-weight: 600; color: var(--brand-violet);">0:00 / 0:00</span>
           </div>
-          <div id="waveformContainer" style="position: relative; width: 100%; height: 34px; display: flex; align-items: flex-end; gap: 2px; padding: 4px 6px; background: #ffffff; border-radius: 8px; border: 1px solid var(--border-hairline); cursor: ew-resize; overflow: hidden;">
+          <div id="waveformContainer" style="position: relative; width: 100%; height: 38px; display: flex; align-items: flex-end; gap: 2px; padding: 4px 6px; background: #ffffff; border-radius: 8px; border: 1px solid var(--border-hairline); cursor: ew-resize; overflow: hidden;">
+            <div id="waveformCutRange" class="waveform-cut-range hidden"></div>
             <div id="waveformPlayhead" style="position: absolute; top: 0; bottom: 0; width: 2px; background: var(--brand-emerald); z-index: 20; pointer-events: none; left: 0%;"></div>
+          </div>
+        </div>
+
+        <!-- Studio Color Grade, Speaker Pan & Framing Strip -->
+        <div class="grid-2" style="width: 100%; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 6px; justify-content: space-between; padding: 6px 10px; border-radius: 10px; background: var(--bg-subtle); border: 1px solid var(--border-hairline);">
+            <label for="studioFilterSelect" style="font-size: 11px; font-weight: 600; color: var(--text-secondary);">Grade</label>
+            <select id="studioFilterSelect" class="kn-select" style="width: auto; min-height: 28px; font-size: 11px; padding: 2px 24px 2px 8px;">
+              <option value="none">Natural</option>
+              <option value="contrast(1.12) saturate(1.15)">Studio Crisp</option>
+              <option value="contrast(1.16) saturate(1.28) brightness(1.04)">Vibrant Pop</option>
+              <option value="sepia(0.18) contrast(1.08) saturate(1.15)">Warm Film</option>
+              <option value="grayscale(1) contrast(1.22)">Noir B&amp;W</option>
+            </select>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px; justify-content: space-between; padding: 6px 10px; border-radius: 10px; background: var(--bg-subtle); border: 1px solid var(--border-hairline);">
+            <label for="studioFitSelect" style="font-size: 11px; font-weight: 600; color: var(--text-secondary);">Frame</label>
+            <select id="studioFitSelect" class="kn-select" style="width: auto; min-height: 28px; font-size: 11px; padding: 2px 24px 2px 8px;">
+              <option value="blur_margins">Blur Backdrop</option>
+              <option value="center_crop">Center Crop</option>
+            </select>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px; justify-content: space-between; padding: 6px 10px; border-radius: 10px; background: var(--bg-subtle); border: 1px solid var(--border-hairline);">
+            <label for="studioPanSelect" style="font-size: 11px; font-weight: 600; color: var(--text-secondary);">Focus</label>
+            <select id="studioPanSelect" class="kn-select" style="width: auto; min-height: 28px; font-size: 11px; padding: 2px 24px 2px 8px;">
+              <option value="center">Center</option>
+              <option value="left">Left Speaker</option>
+              <option value="right">Right Speaker</option>
+            </select>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px; justify-content: space-between; padding: 6px 10px; border-radius: 10px; background: var(--bg-subtle); border: 1px solid var(--border-hairline);">
+            <label for="studioZoomSelect" style="font-size: 11px; font-weight: 600; color: var(--text-secondary);">Zoom</label>
+            <select id="studioZoomSelect" class="kn-select" style="width: auto; min-height: 28px; font-size: 11px; padding: 2px 24px 2px 8px;">
+              <option value="1">1.0x</option>
+              <option value="1.15">1.15x</option>
+              <option value="1.3">1.3x</option>
+              <option value="1.5">1.5x</option>
+            </select>
           </div>
         </div>
 
         <!-- Download MP4 Button -->
         <button type="button" id="btnDownloadClip" class="kn-pressable kn-btn-success" style="width: 100%;">
           <i data-lucide="download" style="width: 16px; height: 16px;"></i>
-          <span>Download MP4 Clip</span>
+          <span>Export &amp; Download 1080p MP4</span>
         </button>
       </div>
 
@@ -756,6 +864,11 @@
             </label>
           </div>
           <input type="text" id="inputHookTitle" class="kn-input" style="min-height: 40px; padding: 8px 12px; font-size: 13px; font-weight: 600;" placeholder="Enter top title banner..." />
+          <div style="display: flex; flex-wrap: wrap; gap: 5px;">
+            <button type="button" class="hook-preset-pill kn-pressable kn-icon-btn" style="min-height: 24px; padding: 2px 8px; font-size: 10.5px;" data-hook="THE 1 SECRET NOBODY TELLS YOU">The 1 Secret</button>
+            <button type="button" class="hook-preset-pill kn-pressable kn-icon-btn" style="min-height: 24px; padding: 2px 8px; font-size: 10.5px;" data-hook="WAIT FOR THE END TO SEE THIS">Wait For End</button>
+            <button type="button" class="hook-preset-pill kn-pressable kn-icon-btn" style="min-height: 24px; padding: 2px 8px; font-size: 10.5px;" data-hook="STOP MAKING THIS MISTAKE">Stop Doing This</button>
+          </div>
         </div>
 
         <!-- Precision Cut Boundaries -->
@@ -829,18 +942,59 @@
           </p>
         </div>
 
-        <!-- Click-to-Seek & Editable Transcript -->
-        <div class="kn-card" style="padding: 14px; display: flex; flex-direction: column; gap: 8px;">
-          <div style="display: flex; align-items: center; justify-content: space-between;">
+        <!-- Click-to-Seek, Add Script & Editable Caption Studio -->
+        <div class="kn-card" style="padding: 14px; display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap;">
             <span style="font-size: 12.5px; font-weight: 700; color: var(--text-primary); display: inline-flex; align-items: center; gap: 6px;">
               <i data-lucide="subtitles" style="width: 14px; height: 14px; color: var(--warning);"></i>
-              <span>Transcript</span>
+              <span>Captions &amp; Script</span>
             </span>
-            <button type="button" id="btnToggleEditWords" class="kn-pressable kn-icon-btn" style="min-height: 28px; padding: 3px 10px; font-size: 11px; color: var(--brand-violet);">
-              Edit Words
-            </button>
+            <div style="display: flex; align-items: center; gap: 5px;">
+              <button type="button" id="btnOpenCaptionComposer" class="kn-pressable kn-icon-btn" style="min-height: 28px; padding: 3px 10px; font-size: 11px; color: var(--success); font-weight: 600;">
+                Add Script
+              </button>
+              <button type="button" id="btnToggleEditWords" class="kn-pressable kn-icon-btn" style="min-height: 28px; padding: 3px 10px; font-size: 11px; color: var(--brand-violet);">
+                Edit Words
+              </button>
+            </div>
           </div>
-          <p id="transcriptHelpHint" style="font-size: 11px; color: var(--text-secondary); margin: 0;">Tap any word to jump playback or click "Edit Words" to adjust caption spelling</p>
+
+          <!-- Quick Caption Scale & Position Strip -->
+          <div class="grid-2" style="gap: 8px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 4px 8px; border-radius: 8px; background: var(--bg-subtle); border: 1px solid var(--border-hairline);">
+              <label for="captionSizeSelect" style="font-size: 10.5px; font-weight: 600; color: var(--text-secondary);">Size</label>
+              <select id="captionSizeSelect" class="kn-select" style="width: auto; min-height: 26px; font-size: 10.5px; padding: 2px 20px 2px 6px;">
+                <option value="0.85">Small</option>
+                <option value="1" selected>Normal</option>
+                <option value="1.2">Large</option>
+                <option value="1.38">Hero</option>
+              </select>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 4px 8px; border-radius: 8px; background: var(--bg-subtle); border: 1px solid var(--border-hairline);">
+              <label for="captionPosSelect" style="font-size: 10.5px; font-weight: 600; color: var(--text-secondary);">Position</label>
+              <select id="captionPosSelect" class="kn-select" style="width: auto; min-height: 26px; font-size: 10.5px; padding: 2px 20px 2px 6px;">
+                <option value="bottom" selected>Bottom</option>
+                <option value="lower">Lower Third</option>
+                <option value="center">Center</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Expandable Add / Paste Script & Voice Dictate Drawer -->
+          <div id="captionComposerDrawer" class="hidden" style="display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 12px; background: var(--bg-subtle); border: 1px solid var(--brand-violet-ring);">
+            <textarea id="captionScriptInput" rows="3" class="kn-input" style="min-height: 70px; padding: 8px 10px; font-size: 12px; resize: vertical;" placeholder="Type or paste spoken words for this clip..."></textarea>
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap;">
+              <button type="button" id="btnVoiceDictate" class="kn-pressable kn-icon-btn" style="min-height: 30px; padding: 4px 10px; font-size: 11px;">
+                <i data-lucide="mic" style="width: 12px; height: 12px; color: var(--danger);"></i>
+                <span>Voice Dictate</span>
+              </button>
+              <button type="button" id="btnApplyCaptionScript" class="kn-pressable kn-btn-primary" style="min-height: 30px; padding: 4px 12px; font-size: 11px;">
+                <span>Sync Captions</span>
+              </button>
+            </div>
+          </div>
+
+          <p id="transcriptHelpHint" style="font-size: 11px; color: var(--text-secondary); margin: 0;">Tap any word to jump playback or click "Add Script" to write your own captions</p>
           <div id="inspectorTranscriptBox" class="kn-subcard" style="padding: 10px; max-height: 165px; overflow-y: auto; display: flex; flex-wrap: wrap; gap: 4px;"></div>
         </div>
 

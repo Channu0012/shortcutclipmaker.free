@@ -840,3 +840,179 @@ body.in-workspace .kn-header-inner {
     -webkit-backdrop-filter: none;
   }
 }
+
+/* =========================================================
+   FOUNDER-GRADE UPLOAD STUDIO & LIVE EDITOR SUITE
+========================================================== */
+.kn-upload-hero {
+  position: relative;
+  border: 2px dashed rgba(111, 44, 243, 0.28);
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 249, 253, 0.95) 100%);
+  padding: 38px 24px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  cursor: pointer;
+  transition: all 260ms var(--ease-spring);
+  box-shadow: 0 4px 20px rgba(111, 44, 243, 0.04);
+}
+
+.kn-upload-hero:hover,
+.kn-upload-hero.drag-over {
+  border-color: var(--brand-violet);
+  background: linear-gradient(180deg, #ffffff 0%, rgba(111, 44, 243, 0.05) 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(111, 44, 243, 0.12);
+}
+
+.kn-upload-hero-icon {
+  width: 58px;
+  height: 58px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(111, 44, 243, 0.14) 0%, rgba(14, 200, 138, 0.12) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 220ms var(--ease-spring);
+}
+
+.kn-upload-hero:hover .kn-upload-hero-icon {
+  transform: scale(1.08);
+}
+
+.kn-file-meta-card {
+  width: 100%;
+  border-radius: 16px;
+  border: 1px solid var(--border-hairline);
+  background: #ffffff;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  box-shadow: var(--shadow-card);
+  animation: panelEnter 260ms var(--ease-spring) forwards;
+}
+
+/* In-Stage Live Caption Overlay */
+.live-subtitle-overlay {
+  position: absolute;
+  bottom: 14%;
+  left: 6%;
+  right: 6%;
+  z-index: 35;
+  pointer-events: none;
+  display: flex;
+  justify-content: center;
+  text-align: center;
+  transition: all 140ms ease-out;
+}
+
+.live-caption-box {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 7px 10px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Plus Jakarta Sans", "Inter", sans-serif;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.85);
+  line-height: 1.25;
+}
+
+.live-word-active {
+  display: inline-block;
+  transform: scale(1.12);
+  transition: transform 90ms var(--ease-spring);
+}
+
+.caption-style-hormozi .live-word-active {
+  background: #0ec88a;
+  color: #052e16 !important;
+  padding: 2px 8px;
+  border-radius: 6px;
+  text-shadow: none;
+}
+
+.caption-style-mrbeast .live-word-active {
+  color: #ff2d2d !important;
+  text-shadow: 0 0 14px rgba(255, 45, 45, 0.8);
+}
+
+.caption-style-tiktok .live-word-active {
+  color: #fe2c55 !important;
+  text-shadow: 0 0 12px rgba(254, 44, 85, 0.7);
+}
+
+.caption-style-neon .live-word-active {
+  color: #00ffff !important;
+  text-shadow: 0 0 14px rgba(0, 255, 255, 0.8);
+}
+
+.caption-style-podcast .live-word-active {
+  color: #fbbf24 !important;
+}
+
+/* Transport Bar */
+.kn-transport-bar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-hairline);
+}
+
+.kn-transport-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.kn-transport-btn:hover {
+  background: rgba(17, 19, 25, 0.07);
+}
+
+.kn-transport-btn.btn-play-hero {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--brand-violet);
+  color: #ffffff;
+}
+
+.kn-transport-btn.btn-play-hero:hover {
+  background: var(--brand-violet-hover);
+}
+
+/* Waveform In/Out Cut Highlight */
+.waveform-cut-range {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(111, 44, 243, 0.12);
+  border-left: 2px solid var(--brand-violet);
+  border-right: 2px solid var(--brand-violet);
+  pointer-events: none;
+  z-index: 10;
+}
+

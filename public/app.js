@@ -101,7 +101,8 @@ document.addEventListener("DOMContentLoaded", () => {
   let elapsedTimerInterval = null;
   let renderTimerInterval = null;
   let currentWizardStep = 1;
-  let activeSourceMode = "youtube";
+  let activeSourceMode = "upload";
+  let isPlayingLiveSource = false;
   const speedSteps = [1, 1.25, 1.5, 2];
   let speedIdx = 0;
 
@@ -160,6 +161,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const fileUploadInput = document.getElementById("fileUploadInput");
   const dropZone = document.getElementById("dropZone");
   const uploadLabelText = document.getElementById("uploadLabelText");
+  const fileUploadMeta = document.getElementById("fileUploadMeta");
+  const metaFileName = document.getElementById("metaFileName");
+  const metaFileDetails = document.getElementById("metaFileDetails");
+  const btnMetaProceed = document.getElementById("btnMetaProceed");
 
   const clipForm = document.getElementById("clipForm");
   const urlInput = document.getElementById("urlInput");
@@ -186,7 +191,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const videoChannel = document.getElementById("videoChannel");
   const timelineDurationBadge = document.getElementById("timelineDurationBadge");
   const clipsFoundBadge = document.getElementById("clipsFoundBadge");
+  const timelineTrackContainer = document.getElementById("timelineTrackContainer");
   const timelineTrack = document.getElementById("timelineTrack");
+  const btnAddNewClip = document.getElementById("btnAddNewClip");
   const categoryFilterBar = document.getElementById("categoryFilterBar");
   const clipCardsList = document.getElementById("clipCardsList");
   const countAll = document.getElementById("countAll");
@@ -201,7 +208,24 @@ document.addEventListener("DOMContentLoaded", () => {
   const workspaceCaptionSelect = document.getElementById("workspaceCaptionSelect");
   const btnPlaybackSpeed = document.getElementById("btnPlaybackSpeed");
   const deviceFrame = document.getElementById("deviceFrame");
+  const previewBackdrop = document.getElementById("previewBackdrop");
   const previewVideo = document.getElementById("previewVideo");
+  const liveBannerOverlay = document.getElementById("liveBannerOverlay");
+  const liveBannerOverlayText = document.getElementById("liveBannerOverlayText");
+  const liveSubtitleTrack = document.getElementById("liveSubtitleTrack");
+  const liveCaptionBox = document.getElementById("liveCaptionBox");
+  const btnPlayPause = document.getElementById("btnPlayPause");
+  const playPauseIcon = document.getElementById("playPauseIcon");
+  const btnJumpBack = document.getElementById("btnJumpBack");
+  const btnJumpForward = document.getElementById("btnJumpForward");
+  const btnSetMarkIn = document.getElementById("btnSetMarkIn");
+  const btnSetMarkOut = document.getElementById("btnSetMarkOut");
+  const playheadTimecode = document.getElementById("playheadTimecode");
+  const waveformCutRange = document.getElementById("waveformCutRange");
+  const studioFilterSelect = document.getElementById("studioFilterSelect");
+  const studioFitSelect = document.getElementById("studioFitSelect");
+  const studioPanSelect = document.getElementById("studioPanSelect");
+  const studioZoomSelect = document.getElementById("studioZoomSelect");
   const sourceYoutubeFrame = document.getElementById("sourceYoutubeFrame");
   const btnToggleSound = document.getElementById("btnToggleSound");
   const soundIcon = document.getElementById("soundIcon");
@@ -241,6 +265,13 @@ document.addEventListener("DOMContentLoaded", () => {
   const metricRetentionVal = document.getElementById("metricRetentionVal");
   const metricEnergyVal = document.getElementById("metricEnergyVal");
   const inspectorReasoning = document.getElementById("inspectorReasoning");
+  const btnOpenCaptionComposer = document.getElementById("btnOpenCaptionComposer");
+  const captionSizeSelect = document.getElementById("captionSizeSelect");
+  const captionPosSelect = document.getElementById("captionPosSelect");
+  const captionComposerDrawer = document.getElementById("captionComposerDrawer");
+  const captionScriptInput = document.getElementById("captionScriptInput");
+  const btnVoiceDictate = document.getElementById("btnVoiceDictate");
+  const btnApplyCaptionScript = document.getElementById("btnApplyCaptionScript");
   const btnToggleEditWords = document.getElementById("btnToggleEditWords");
   const transcriptHelpHint = document.getElementById("transcriptHelpHint");
   const inspectorTranscriptBox = document.getElementById("inspectorTranscriptBox");
@@ -354,7 +385,9 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!urlInput || !urlStatusHint) return true;
     const val = urlInput.value.trim();
     if (!val) {
-      urlStatusHint.textContent = "Paste any public YouTube link";
+      urlStatusHint.textContent = activeSourceMode === "upload"
+        ? "Direct file uploads work offline for any size or length"
+        : "Paste any public YouTube link";
       urlStatusHint.style.color = "var(--text-secondary)";
       return false;
     }
@@ -385,9 +418,13 @@ document.addEventListener("DOMContentLoaded", () => {
     } else if (step === 2) {
       const val = urlInput ? urlInput.value.trim() : "";
       if (step2SourceSummary) {
-        step2SourceSummary.textContent = val.startsWith("local://")
-          ? `File: ${val.replace("local://", "")}`
-          : val;
+        if (val.startsWith("local://")) {
+          let cleanFile = val.replace("local://browser/", "").replace("local://", "");
+          try { cleanFile = decodeURIComponent(cleanFile); } catch (_) {}
+          step2SourceSummary.textContent = `File: ${cleanFile}`;
+        } else {
+          step2SourceSummary.textContent = val;
+        }
       }
       wizardStep1.classList.add("hidden");
       wizardStep2.classList.remove("hidden");
@@ -511,8 +548,13 @@ document.addEventListener("DOMContentLoaded", () => {
     const bannerOn = chkWorkspaceBanner ? chkWorkspaceBanner.checked : true;
     const caption = workspaceCaptionSelect ? workspaceCaptionSelect.value : captionSelect.value;
     const layout = layoutSelect ? layoutSelect.value : "blur_margins";
+    const grade = studioFilterSelect ? studioFilterSelect.value : "none";
+    const pan = studioPanSelect ? studioPanSelect.value : "center";
+    const zoom = studioZoomSelect ? studioZoomSelect.value : "1";
+    const cSize = captionSizeSelect ? captionSizeSelect.value : "1";
+    const cPos = captionPosSelect ? captionPosSelect.value : "bottom";
     const wordsSig = (clip.custom_words || []).map((w) => w.word).join(" ");
-    return `${Number(clip.start_time).toFixed(2)}|${Number(clip.end_time).toFixed(2)}|${clip.hook_title}|${layout}|${caption}|${bannerOn}|${wordsSig}`;
+    return `${Number(clip.start_time).toFixed(2)}|${Number(clip.end_time).toFixed(2)}|${clip.hook_title}|${layout}|${caption}|${bannerOn}|${grade}|${pan}|${zoom}|${cSize}|${cPos}|${wordsSig}`;
   }
 
   function decodeInlineMp4ToBlobUrl(b64) {
@@ -767,6 +809,7 @@ document.addEventListener("DOMContentLoaded", () => {
       tabSourceUpload.classList.add("active");
       tabSourceYoutube.classList.remove("active");
     }
+    validateSourceInline();
   }
 
   if (tabSourceYoutube && tabSourceUpload) {
@@ -817,20 +860,42 @@ document.addEventListener("DOMContentLoaded", () => {
     let vidW = 1280;
     let vidH = 720;
     let thumbDataUrl = "/assets/showcase-podcast.jpg";
+    const sceneThumbs = [];
+    const visualDeltas = [];
 
     await new Promise((resolve) => {
       const v = document.createElement("video");
       let settled = false;
+      const sampleFracs = [0.08, 0.25, 0.42, 0.58, 0.75, 0.90];
+      let sampleIdx = 0;
+      let prevLuma = null;
+
       const finish = () => {
         if (settled) return;
         settled = true;
         try { v.removeAttribute("src"); v.load(); v.remove(); } catch (_) {}
         resolve();
       };
-      const timeout = setTimeout(finish, 6000);
+      const timeout = setTimeout(finish, 5500);
       v.muted = true;
       v.playsInline = true;
       v.preload = "metadata";
+
+      const seekNext = () => {
+        if (sampleIdx >= sampleFracs.length || duration <= 4) {
+          clearTimeout(timeout);
+          finish();
+          return;
+        }
+        try {
+          const targetT = Math.min(duration - 0.3, Math.max(0.2, duration * sampleFracs[sampleIdx]));
+          v.currentTime = targetT;
+        } catch (_) {
+          clearTimeout(timeout);
+          finish();
+        }
+      };
+
       v.onloadedmetadata = () => {
         if (Number.isFinite(v.duration) && v.duration > 0.5) duration = v.duration;
         if (v.videoWidth && v.videoHeight) {
@@ -838,12 +903,13 @@ document.addEventListener("DOMContentLoaded", () => {
           vidH = v.videoHeight;
         }
         try {
-          v.currentTime = Math.min(2.0, Math.max(0.2, duration * 0.15));
+          v.currentTime = Math.min(Math.max(0.2, duration * sampleFracs[0]), Math.max(0.2, duration - 0.3));
         } catch (_) {
           clearTimeout(timeout);
           finish();
         }
       };
+
       v.onseeked = () => {
         try {
           const canvas = document.createElement("canvas");
@@ -852,11 +918,29 @@ document.addEventListener("DOMContentLoaded", () => {
           const ctx = canvas.getContext("2d");
           if (ctx) {
             ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
-            thumbDataUrl = canvas.toDataURL("image/jpeg", 0.82);
+            const dataUrl = canvas.toDataURL("image/jpeg", 0.78);
+            sceneThumbs.push(dataUrl);
+            if (sampleIdx === 0 || sceneThumbs.length === 1) {
+              thumbDataUrl = dataUrl;
+            }
+            // Fast 16x9 luma fingerprint to detect visual scene transitions on giant files
+            const small = document.createElement("canvas");
+            small.width = 16;
+            small.height = 9;
+            const sctx = small.getContext("2d");
+            if (sctx) {
+              sctx.drawImage(v, 0, 0, 16, 9);
+              const px = sctx.getImageData(0, 0, 16, 9).data;
+              let sum = 0;
+              for (let p = 0; p < px.length; p += 4) sum += (px[p] + px[p + 1] + px[p + 2]) / 3;
+              const avg = sum / 144;
+              if (prevLuma !== null) visualDeltas.push(Math.abs(avg - prevLuma));
+              prevLuma = avg;
+            }
           }
         } catch (_) {}
-        clearTimeout(timeout);
-        finish();
+        sampleIdx += 1;
+        seekNext();
       };
       v.onerror = () => {
         clearTimeout(timeout);
@@ -865,19 +949,24 @@ document.addEventListener("DOMContentLoaded", () => {
       v.src = objectUrl;
     });
 
-    let peaks = buildFallbackPeaks(56);
-    if (file.size <= 45 * 1024 * 1024 && (window.AudioContext || window.webkitAudioContext)) {
+    let peaks = buildFallbackPeaks(112);
+    if (file.size <= 75 * 1024 * 1024 && (window.AudioContext || window.webkitAudioContext)) {
       let ac = null;
       try {
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
         ac = new AudioCtx();
         const ab = await file.arrayBuffer();
         const audioBuf = await ac.decodeAudioData(ab);
-        peaks = buildLocalPeaksFromBuffer(audioBuf, 56);
+        peaks = buildLocalPeaksFromBuffer(audioBuf, 112);
       } catch (_) {
       } finally {
         try { if (ac && ac.state !== "closed") await ac.close(); } catch (_) {}
       }
+    } else if (visualDeltas.length > 0) {
+      peaks = peaks.map((p, idx) => {
+        const d = visualDeltas[idx % visualDeltas.length] || 0;
+        return Number(Math.min(0.98, Math.max(0.18, p * 0.65 + (d / 40) * 0.45)).toFixed(3));
+      });
     }
 
     const safeUrl = `local://browser/${encodeURIComponent(file.name)}`;
@@ -890,6 +979,7 @@ document.addEventListener("DOMContentLoaded", () => {
       width: vidW,
       height: vidH,
       thumbDataUrl,
+      sceneThumbs: sceneThumbs.length ? sceneThumbs : [thumbDataUrl],
       peaks,
     };
     return localClientSession;
@@ -898,70 +988,131 @@ document.addEventListener("DOMContentLoaded", () => {
   function analyzeClientLocalSession(maxClips, targetDuration) {
     const sess = localClientSession;
     const total = Math.max(8, Number(sess.duration) || 60);
-    const minWindow = Math.max(5, Math.min(targetDuration, total));
-    const count = Math.max(1, Math.min(maxClips, Math.max(1, Math.floor(total / Math.max(6, Math.min(minWindow, total / 2))))));
-    const clipLen = Math.min(total, Math.max(5, Math.min(targetDuration, total / count)));
-    const stride = count > 1 ? Math.max(4, (total - clipLen) / Math.max(1, count - 1)) : 0;
+    const clipLen = Math.min(total, Math.max(5, targetDuration));
+    const maxPossible = Math.max(1, Math.floor(total / Math.max(6, Math.min(clipLen * 0.65, total / 2))));
+    const count = Math.max(1, Math.min(maxClips, maxPossible));
+    const peaks = Array.isArray(sess.peaks) && sess.peaks.length >= 16 ? sess.peaks : buildFallbackPeaks(112);
 
-    const cleanName = sess.filename.replace(/\.[^/.]+$/, "").replace(/[_-]+/g, " ").trim() || "Local Studio Video";
-    const categories = ["Top Hook", "Key Moment", "Story Beat", "Insight"];
+    // Score sliding windows using actual audio RMS energy spikes so high-energy scenes come first
+    const stepSecs = Math.max(3, Math.min(clipLen * 0.55, total / Math.max(count * 2, 12)));
+    const candidates = [];
+    for (let s = 0; s <= Math.max(0, total - Math.min(clipLen, 5)); s += stepSecs) {
+      const start = Number(s.toFixed(2));
+      const end = Number(Math.min(total, start + clipLen).toFixed(2));
+      if (end - start < 4) continue;
+      const bStart = Math.max(0, Math.floor((start / total) * peaks.length));
+      const bEnd = Math.min(peaks.length, Math.max(bStart + 1, Math.ceil((end / total) * peaks.length)));
+      let sum = 0;
+      let mx = 0;
+      for (let b = bStart; b < bEnd; b++) {
+        sum += peaks[b];
+        if (peaks[b] > mx) mx = peaks[b];
+      }
+      const avgE = sum / Math.max(1, bEnd - bStart);
+      const energyScore = Math.min(99, Math.max(76, Math.round(72 + avgE * 18 + mx * 10)));
+      candidates.push({ start, end, dur: Number((end - start).toFixed(2)), avgE, mx, energyScore });
+    }
+
+    // Greedy non-overlapping peak selection + chronological timeline ordering
+    candidates.sort((a, b) => (b.energyScore - a.energyScore) || (a.start - b.start));
+    const picked = [];
+    const minGap = Math.max(2, clipLen * 0.35);
+    for (const cand of candidates) {
+      const overlaps = picked.some((p) => !(cand.end <= p.start + minGap * 0.1 || cand.start >= p.end - minGap * 0.1) && Math.abs(cand.start - p.start) < clipLen * 0.65);
+      if (!overlaps) picked.push(cand);
+      if (picked.length >= count) break;
+    }
+    if (picked.length === 0) {
+      picked.push({ start: 0, end: Math.min(total, clipLen), dur: Math.min(total, clipLen), avgE: 0.75, mx: 0.9, energyScore: 93 });
+    }
+    picked.sort((a, b) => a.start - b.start);
+
+    const cleanName = sess.filename.replace(/\.[^/.]+$/, "").replace(/[_-]+/g, " ").trim() || "Uploaded Video";
+    const categories = ["Top Hook", "High Energy", "Key Moment", "Story Beat", "Insight"];
+    const catTags = ["hook", "high_energy", "rule", "story", "insight"];
+    const viralHookTemplates = [
+      "THE 1 SECRET NOBODY TELLS YOU",
+      "WHY 99% OF PEOPLE FAIL AT THIS",
+      "THE FRAMEWORK THAT CHANGED EVERYTHING",
+      "WAIT UNTIL THE END TO UNDERSTAND",
+      "THIS SIMPLE SHIFT 10X'D MY RESULTS",
+      "THE HARDEST TRUTH ABOUT SUCCESS",
+      "DO THIS BEFORE IT IS TOO LATE",
+      "WHAT TOP 1% PERFORMERS DO DIFFERENTLY",
+      "THE BIGGEST MISTAKE YOU CAN MAKE",
+      "HOW TO ACTUALLY GET REAL LEVERAGE",
+      "WHAT THEY NEVER TAUGHT YOU IN SCHOOL",
+      "THE TURNING POINT OF MY CAREER",
+    ];
     const defaultPhrases = [
-      "Watch this key moment from the main timeline cut.",
-      "High-energy segment framed cleanly for vertical viewing.",
-      "Clear storytelling takeaway ready for social publishing.",
-      "Focused highlight trimmed automatically around audio peaks.",
+      "Click Add Script in the right panel to customize captions for this scene.",
+      "Double click or use I and O keys to set exact in and out trim points.",
+      "Switch Focus Left or Right to reframe speakers cleanly in vertical mode.",
+      "Adjust subtitle size, position, and viral presets live over your video.",
     ];
 
-    const clips = [];
-    for (let i = 0; i < count; i++) {
-      const start = Number(Math.min(Math.max(0, i * stride), Math.max(0, total - 3)).toFixed(2));
-      const end = Number(Math.min(total, Math.max(start + 3, start + clipLen)).toFixed(2));
-      const dur = Number((end - start).toFixed(2));
-      const hookScore = Math.min(98, 86 + ((i * 3) % 12));
-      const retScore = Math.min(97, 84 + ((i * 5) % 13));
-      const energyScore = Math.min(96, 82 + ((i * 7) % 14));
+    const clips = picked.map((win, i) => {
+      const hookScore = Math.min(99, Math.max(85, win.energyScore + ((i % 3) - 1)));
+      const retScore = Math.min(98, Math.max(84, win.energyScore - (i % 4)));
+      const energyScore = win.energyScore;
       const viralScore = Math.round((hookScore + retScore + energyScore) / 3);
       const quote = defaultPhrases[i % defaultPhrases.length];
       const tokens = quote.split(/\s+/);
-      const step = Math.max(0.25, dur / Math.max(1, tokens.length));
+      const step = Math.max(0.28, win.dur / Math.max(1, tokens.length));
       const words = tokens.map((w, idx) => ({
         word: w,
-        start: Number((start + idx * step).toFixed(2)),
-        end: Number((start + (idx + 1) * step).toFixed(2)),
+        start: Number((win.start + idx * step).toFixed(2)),
+        end: Number((win.start + (idx + 1) * step).toFixed(2)),
       }));
-      const title = `${cleanName.slice(0, 28)} — Moment #${i + 1}`;
-      clips.push({
+      const hookTitle = viralHookTemplates[i % viralHookTemplates.length];
+      const wStartIdx = Math.max(0, Math.floor((win.start / total) * peaks.length));
+      const wEndIdx = Math.min(peaks.length, Math.max(wStartIdx + 24, Math.ceil((win.end / total) * peaks.length)));
+      const clipPeaks = peaks.slice(wStartIdx, wEndIdx);
+      const thumbList = sess.sceneThumbs || [sess.thumbDataUrl];
+      const thumbIdx = Math.min(thumbList.length - 1, Math.floor(((win.start + win.dur * 0.5) / total) * thumbList.length));
+
+      return {
         id: `local_clip_${i + 1}`,
         index: i + 1,
-        title,
-        hook_title: title,
-        category_tag: categories[i % categories.length],
-        start_time: start,
-        end_time: end,
-        duration: dur,
+        title: `${cleanName.slice(0, 24)} - Scene #${i + 1}`,
+        hook_title: hookTitle,
+        category: categories[i % categories.length],
+        category_tag: catTags[i % catTags.length],
+        start_time: win.start,
+        end_time: win.end,
+        duration: win.dur,
+        score: viralScore,
         hook_score: hookScore,
         retention_score: retScore,
         energy_score: energyScore,
         viral_score: viralScore,
-        virality_reasoning: `Detected clean pacing window (${formatTime(start)} - ${formatTime(end)}) from audio energy curve.`,
+        thumbnail: thumbList[thumbIdx] || sess.thumbDataUrl,
+        virality_breakdown: {
+          hook_score: hookScore,
+          retention_score: retScore,
+          energy_score: energyScore,
+          reasoning: `Energy peak window (${formatTime(win.start)} - ${formatTime(win.end)}) selected from audio/scene intensity curve.`,
+        },
+        virality_reasoning: `High energy cluster from ${formatTime(win.start)} to ${formatTime(win.end)}.`,
         hook_quote: quote,
         summary: quote,
         transcript_snippet: quote,
         words,
-        hashtags: ["#shorts", "#reels", "#klipnux"],
+        hashtags: ["#shorts", "#reels", "#viral", "#podcast", "#klipnux"],
         youtube_shorts_seo: {
-          title,
-          tags: ["#shorts", "#reels", "#klipnux"],
+          title: `${hookTitle} - ${cleanName.slice(0, 30)}`,
+          description: `${quote}\n\nEdited with klipnux Studio.`,
+          tags: ["#shorts", "#reels", "#viral", "#podcast", "#klipnux"],
         },
-        waveform_preview: sess.peaks,
-      });
-    }
+        waveform_preview: clipPeaks.length >= 16 ? clipPeaks.map((v) => Math.round(v * 100)) : sess.peaks.slice(0, 56).map((v) => Math.round(v * 100)),
+      };
+    });
 
     return {
       video_info: {
         id: "local_browser",
         title: cleanName,
-        channel: "Local File (Browser Engine)",
+        channel: "Direct Upload (Browser Engine)",
         duration: total,
         thumbnail: sess.thumbDataUrl,
         is_local: true,
@@ -1089,7 +1240,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const combinedStream = new MediaStream(tracks);
     const recorder = new MediaRecorder(combinedStream, {
       mimeType,
-      videoBitsPerSecond: 2600000,
+      videoBitsPerSecond: 3500000,
     });
     const chunks = [];
     recorder.ondataavailable = (ev) => {
@@ -1100,6 +1251,12 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!ctx) return;
       const vw = srcVid.videoWidth || sess.width || 1280;
       const vh = srcVid.videoHeight || sess.height || 720;
+      const activeFit = (studioFitSelect && studioFitSelect.value === "center_crop") || layoutStyle === "center_crop";
+      const activeColorFilter = (studioFilterSelect && studioFilterSelect.value && studioFilterSelect.value !== "none") ? studioFilterSelect.value : "none";
+      const zoomFactor = studioZoomSelect ? Math.max(1, parseFloat(studioZoomSelect.value) || 1) : 1;
+      const panMode = studioPanSelect ? studioPanSelect.value : "center";
+      const capScale = captionSizeSelect ? Math.max(0.75, parseFloat(captionSizeSelect.value) || 1) : 1;
+      const capPos = captionPosSelect ? captionPosSelect.value : "bottom";
 
       ctx.save();
       ctx.fillStyle = "#0b0c10";
@@ -1113,16 +1270,24 @@ document.addEventListener("DOMContentLoaded", () => {
       ctx.drawImage(srcVid, (width - bgW) / 2, (height - bgH) / 2, bgW, bgH);
       ctx.filter = "none";
 
-      // Foreground frame with studio drop shadow
-      const fgScale = layoutStyle === "center_crop" ? Math.max(width / vw, height / vh) : Math.min(width / vw, height / vh);
+      // Foreground frame with studio drop shadow, speaker pan, zoom & grade
+      const baseScale = activeFit ? Math.max(width / vw, height / vh) : Math.min(width / vw, height / vh);
+      const fgScale = baseScale * zoomFactor;
       const fgW = vw * fgScale;
       const fgH = vh * fgScale;
-      const fgX = (width - fgW) / 2;
+      let fgX = (width - fgW) / 2;
+      if (panMode === "left") {
+        fgX = Math.min(0, Math.max(width - fgW, 0));
+      } else if (panMode === "right") {
+        fgX = Math.max(width - fgW, Math.min(0, width - fgW));
+      }
       const fgY = (height - fgH) / 2;
       ctx.save();
       ctx.shadowColor = "rgba(0, 0, 0, 0.56)";
       ctx.shadowBlur = 32;
+      if (activeColorFilter !== "none") ctx.filter = activeColorFilter;
       ctx.drawImage(srcVid, fgX, fgY, fgW, fgH);
+      ctx.filter = "none";
       ctx.restore();
 
       // Editorial top Hook Banner
@@ -1159,19 +1324,22 @@ document.addEventListener("DOMContentLoaded", () => {
       if (chunkWords.length > 0) {
         const isCaps = captionStyle === "hormozi" || captionStyle === "mrbeast" || captionStyle === "neon";
         const labels = chunkWords.map((w) => (isCaps ? String(w.word || "").toUpperCase() : String(w.word || "")));
-        ctx.font = "900 40px Inter, -apple-system, sans-serif";
+        const fontPx = Math.round(40 * capScale);
+        ctx.font = `900 ${fontPx}px Inter, -apple-system, sans-serif`;
         ctx.textBaseline = "middle";
         ctx.textAlign = "left";
-        const gap = 16;
+        const gap = Math.round(16 * capScale);
         const widths = labels.map((l) => ctx.measureText(l).width);
         const totalRowW = widths.reduce((a, b) => a + b, 0) + gap * Math.max(0, labels.length - 1);
-        const capY = Math.round(height * 0.80);
+        const yFrac = capPos === "center" ? 0.50 : capPos === "lower" ? 0.67 : 0.80;
+        const capY = Math.round(height * yFrac);
 
         if (captionStyle === "minimal" || captionStyle === "podcast") {
           ctx.fillStyle = "rgba(15, 17, 23, 0.82)";
           ctx.beginPath();
-          if (ctx.roundRect) ctx.roundRect((width - totalRowW - 44) / 2, capY - 32, totalRowW + 44, 64, 14);
-          else ctx.rect((width - totalRowW - 44) / 2, capY - 32, totalRowW + 44, 64);
+          const boxPadY = Math.round(32 * capScale);
+          if (ctx.roundRect) ctx.roundRect((width - totalRowW - 44) / 2, capY - boxPadY, totalRowW + 44, boxPadY * 2, 14);
+          else ctx.rect((width - totalRowW - 44) / 2, capY - boxPadY, totalRowW + 44, boxPadY * 2);
           ctx.fill();
         }
 
@@ -1183,8 +1351,9 @@ document.addEventListener("DOMContentLoaded", () => {
           if (isActive && captionStyle === "hormozi") {
             ctx.fillStyle = "#00bf49";
             ctx.beginPath();
-            if (ctx.roundRect) ctx.roundRect(cursorX - 10, capY - 27, wPx + 20, 54, 10);
-            else ctx.rect(cursorX - 10, capY - 27, wPx + 20, 54);
+            const pillH = Math.round(54 * capScale);
+            if (ctx.roundRect) ctx.roundRect(cursorX - 10, capY - pillH / 2, wPx + 20, pillH, 10);
+            else ctx.rect(cursorX - 10, capY - pillH / 2, wPx + 20, pillH);
             ctx.fill();
           }
           ctx.lineWidth = isActive ? 8 : 6;
@@ -1276,12 +1445,23 @@ document.addEventListener("DOMContentLoaded", () => {
       const sess = await prepareClientLocalVideo(file);
       urlInput.value = sess.url;
       uploadLabelText.textContent = `Ready in Browser Studio: ${file.name}`;
+      if (fileUploadMeta && metaFileName && metaFileDetails) {
+        metaFileName.textContent = file.name;
+        metaFileDetails.textContent = `${formatTime(sess.duration)} · ${sess.width}x${sess.height} · ${(file.size / (1024 * 1024)).toFixed(1)} MB · Offline Browser Engine`;
+        fileUploadMeta.classList.remove("hidden");
+      }
       showToast(`Loaded ${file.name} (${formatTime(sess.duration)})`);
       setWizardStep(2, "next");
     } catch (err) {
       uploadLabelText.textContent = "Drop MP4, MOV, MKV, or WEBM footage here";
       showToast(err.message || "Video load failed", true);
     }
+  }
+
+  if (btnMetaProceed) {
+    btnMetaProceed.addEventListener("click", () => {
+      setWizardStep(2, "next");
+    });
   }
 
   if (fileUploadInput) {
@@ -1293,14 +1473,14 @@ document.addEventListener("DOMContentLoaded", () => {
   if (dropZone) {
     dropZone.addEventListener("dragover", (e) => {
       e.preventDefault();
-      dropZone.style.borderColor = "var(--brand-violet)";
+      dropZone.classList.add("drag-over");
     });
     dropZone.addEventListener("dragleave", () => {
-      dropZone.style.borderColor = "rgba(17, 19, 25, 0.14)";
+      dropZone.classList.remove("drag-over");
     });
     dropZone.addEventListener("drop", (e) => {
       e.preventDefault();
-      dropZone.style.borderColor = "rgba(17, 19, 25, 0.14)";
+      dropZone.classList.remove("drag-over");
       if (e.dataTransfer.files && e.dataTransfer.files[0]) handleLocalVideoUpload(e.dataTransfer.files[0]);
     });
   }
@@ -1572,6 +1752,9 @@ document.addEventListener("DOMContentLoaded", () => {
         };
         selectClip(currentClips[0]);
         showToast(`${currentClips.length} demo clips ready`);
+      } else if (currentVideoInfo.is_local && localClientSession) {
+        selectClip(currentClips[0]);
+        showToast(`${currentClips.length} scenes ready in Live Editor Studio`);
       } else {
         showToast(`Found ${currentClips.length} clips — cutting Clip #1 preview...`);
         selectClip(currentClips[0]);
@@ -1695,6 +1878,10 @@ document.addEventListener("DOMContentLoaded", () => {
         ? "padding: 5px 12px; border-radius: 980px; border: none; background: #0d9f6e; color: #ffffff; font-size: 11.5px; font-weight: 600;"
         : "padding: 5px 12px; border-radius: 980px; border: none; background: var(--text-primary); color: #ffffff; font-size: 11.5px; font-weight: 600;";
 
+      const thumbHtml = clip.thumbnail
+        ? `<img src="${clip.thumbnail}" alt="Scene ${clip.index}" style="width: 52px; height: 34px; object-fit: cover; border-radius: 7px; border: 1px solid var(--border-hairline); flex-shrink: 0; background: #14151a;" />`
+        : "";
+
       card.innerHTML = `
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px;">
           <div style="display: flex; align-items: center; gap: 7px; min-width: 0;">
@@ -1705,7 +1892,10 @@ document.addEventListener("DOMContentLoaded", () => {
           <span class="kn-badge kn-badge-green kn-tabular" style="font-weight: 700;">${clip.score}</span>
         </div>
 
-        <h4 style="font-size: 13px; font-weight: 700; color: var(--text-primary); margin: 0 0 8px; line-height: 1.35;">${clip.hook_title}</h4>
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+          ${thumbHtml}
+          <h4 style="font-size: 13px; font-weight: 700; color: var(--text-primary); margin: 0; line-height: 1.35; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;">${clip.hook_title}</h4>
+        </div>
 
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
           <span class="kn-tabular" style="font-size: 11.5px; color: var(--text-secondary);">${formatTime(clip.start_time)}-${formatTime(clip.end_time)} &middot; ${Math.round(clip.duration)}s</span>
@@ -1795,6 +1985,84 @@ document.addEventListener("DOMContentLoaded", () => {
   // =========================================================
   // CLIP SELECTION, STAGE PREVIEW & INSPECTOR SYNC
   // =========================================================
+  function applyVideoStageTransform() {
+    if (!previewVideo) return;
+    if (!isPlayingLiveSource) {
+      previewVideo.style.transform = "";
+      previewVideo.style.filter = "";
+      return;
+    }
+    const fitMode = studioFitSelect ? studioFitSelect.value : (layoutSelect.value === "center_crop" ? "center_crop" : "blur_margins");
+    const isBlurLayout = fitMode === "blur_margins" && layoutSelect.value !== "landscape_16_9";
+    previewVideo.style.objectFit = isBlurLayout ? "contain" : "cover";
+    previewVideo.style.filter = (studioFilterSelect && studioFilterSelect.value) ? studioFilterSelect.value : "none";
+
+    const zoomVal = studioZoomSelect ? (parseFloat(studioZoomSelect.value) || 1) : 1;
+    const panVal = studioPanSelect ? studioPanSelect.value : "center";
+    const originX = panVal === "left" ? "18%" : panVal === "right" ? "82%" : "50%";
+    previewVideo.style.transformOrigin = `${originX} 50%`;
+    previewVideo.style.transform = zoomVal > 1 ? `scale(${zoomVal})` : "";
+    if (!isBlurLayout && panVal !== "center") {
+      previewVideo.style.objectPosition = `${originX} 50%`;
+    } else {
+      previewVideo.style.objectPosition = "50% 50%";
+    }
+
+    if (previewBackdrop) {
+      previewBackdrop.classList.toggle("hidden", !isBlurLayout);
+      previewBackdrop.style.filter = `blur(22px) brightness(0.45) saturate(1.25) ${studioFilterSelect && studioFilterSelect.value !== "none" ? studioFilterSelect.value : ""}`;
+    }
+  }
+
+  function startLiveLocalStage(clip) {
+    if (!localClientSession || !localClientSession.objectUrl || !clip) return;
+    isPlayingLiveSource = true;
+    if (stageErrorOverlay) stageErrorOverlay.classList.add("hidden");
+    if (sourceYoutubeFrame) {
+      sourceYoutubeFrame.src = "";
+      sourceYoutubeFrame.classList.add("hidden");
+    }
+    if (playerPlaceholder) playerPlaceholder.classList.add("hidden");
+    if (previewVideo) previewVideo.classList.remove("hidden");
+    if (btnToggleSound) btnToggleSound.classList.remove("hidden");
+
+    applyVideoStageTransform();
+    if (previewVideo) {
+      if (previewVideo.getAttribute("data-live-url") !== localClientSession.objectUrl) {
+        previewVideo.src = localClientSession.objectUrl;
+        previewVideo.setAttribute("data-live-url", localClientSession.objectUrl);
+      }
+      previewVideo.playbackRate = speedSteps[speedIdx];
+      previewVideo.currentTime = Math.max(0, clip.start_time || 0);
+      previewVideo.play().then(() => {
+        if (playPauseIcon) { playPauseIcon.setAttribute("data-lucide", "pause"); refreshIcons(); }
+      }).catch(() => {
+        previewVideo.muted = true;
+        if (soundIcon) soundIcon.setAttribute("data-lucide", "volume-x");
+        refreshIcons();
+        previewVideo.play().catch(() => {});
+      });
+    }
+    const fitMode = studioFitSelect ? studioFitSelect.value : (layoutSelect.value === "center_crop" ? "center_crop" : "blur_margins");
+    const isBlurLayout = fitMode === "blur_margins" && layoutSelect.value !== "landscape_16_9";
+    if (previewBackdrop && isBlurLayout) {
+      if (previewBackdrop.getAttribute("data-live-url") !== localClientSession.objectUrl) {
+        previewBackdrop.src = localClientSession.objectUrl;
+        previewBackdrop.setAttribute("data-live-url", localClientSession.objectUrl);
+      }
+      previewBackdrop.playbackRate = speedSteps[speedIdx];
+      previewBackdrop.currentTime = Math.max(0, clip.start_time || 0);
+      previewBackdrop.play().catch(() => {});
+    }
+
+    updateLiveBanner();
+    updateLiveSubtitles(clip.start_time || 0);
+    if (btnDownloadClip) {
+      const span = btnDownloadClip.querySelector("span");
+      if (span) span.textContent = "Export & Download 1080p MP4";
+    }
+  }
+
   function selectClip(clip) {
     activeClip = clip;
     if (stageErrorOverlay) stageErrorOverlay.classList.add("hidden");
@@ -1815,12 +2083,19 @@ document.addEventListener("DOMContentLoaded", () => {
     const isFresh = rendered && rendered.signature === getClipSignature(clip);
 
     if (isFresh) {
+      isPlayingLiveSource = false;
       loadVideoPlayer(rendered);
       initWaveform(rendered.waveform || clip.waveform_preview);
+    } else if (currentVideoInfo && currentVideoInfo.is_local && localClientSession) {
+      startLiveLocalStage(clip);
+      initWaveform(clip.waveform_preview);
     } else {
+      isPlayingLiveSource = false;
       previewVideo.pause();
       previewVideo.classList.add("hidden");
       if (btnToggleSound) btnToggleSound.classList.add("hidden");
+      if (liveSubtitleTrack) liveSubtitleTrack.classList.add("hidden");
+      if (liveBannerOverlay) liveBannerOverlay.classList.add("hidden");
 
       const isYt = currentVideoInfo && !currentVideoInfo.is_demo && !currentVideoInfo.is_local && currentVideoInfo.id && currentVideoInfo.id.length === 11;
       if (isYt && sourceYoutubeFrame) {
@@ -1908,12 +2183,17 @@ document.addEventListener("DOMContentLoaded", () => {
             clip.custom_words[idx].word = updated.trim();
             renderInteractiveTranscript(clip);
             renderClipsQueue();
-            showToast("Word updated - click Cut & Apply to render");
+            onClipEdited(false);
+            showToast("Caption word updated");
           }
           return;
         }
         const rendered = renderedClipsMap[clip.id];
-        if (rendered && rendered.signature === getClipSignature(clip)) {
+        if (isPlayingLiveSource) {
+          previewVideo.currentTime = Math.max(clip.start_time, Math.min(clip.end_time - 0.2, w.start));
+          previewVideo.play().catch(() => {});
+          updateLiveSubtitles(w.start);
+        } else if (rendered && rendered.signature === getClipSignature(clip)) {
           previewVideo.currentTime = Math.max(0, w.start - clip.start_time);
           previewVideo.play().catch(() => {});
         } else {
@@ -1922,6 +2202,176 @@ document.addEventListener("DOMContentLoaded", () => {
       });
 
       inspectorTranscriptBox.appendChild(span);
+    });
+
+    if (captionScriptInput && (!captionComposerDrawer || captionComposerDrawer.classList.contains("hidden"))) {
+      captionScriptInput.value = words.map((w) => w.word).join(" ");
+    }
+  }
+
+  function applyCustomScriptToClip(clip, rawText) {
+    if (!clip) return;
+    const clean = String(rawText || "").replace(/[\u{1F300}-\u{1FAFF}]/gu, "").trim();
+    if (!clean) return;
+    const tokens = clean.split(/\s+/).filter(Boolean);
+    if (!tokens.length) return;
+    const start = Number(clip.start_time) || 0;
+    const end = Math.max(start + 2, Number(clip.end_time) || start + 15);
+    const totalDur = end - start;
+    // Character-weighted word timing so longer words stay on screen proportionally longer
+    const weights = tokens.map((t) => Math.max(2, t.length));
+    const totalWeight = weights.reduce((a, b) => a + b, 0);
+    let cursor = start;
+    clip.custom_words = tokens.map((word, idx) => {
+      const span = (weights[idx] / totalWeight) * totalDur;
+      const wStart = Number(cursor.toFixed(2));
+      cursor += span;
+      const wEnd = idx === tokens.length - 1 ? Number(end.toFixed(2)) : Number(cursor.toFixed(2));
+      return { word, start: wStart, end: wEnd };
+    });
+    clip.transcript_snippet = clean;
+    clip.summary = clean;
+    renderInteractiveTranscript(clip);
+    onClipEdited(true);
+    showToast(`Synced ${tokens.length} caption words to clip`);
+  }
+
+  if (btnOpenCaptionComposer && captionComposerDrawer) {
+    btnOpenCaptionComposer.addEventListener("click", () => {
+      const opening = captionComposerDrawer.classList.contains("hidden");
+      captionComposerDrawer.classList.toggle("hidden", !opening);
+      if (opening && activeClip && captionScriptInput) {
+        captionScriptInput.value = getActiveWords(activeClip).map((w) => w.word).join(" ");
+        captionScriptInput.focus();
+      }
+    });
+  }
+
+  if (btnApplyCaptionScript) {
+    btnApplyCaptionScript.addEventListener("click", () => {
+      if (!activeClip || !captionScriptInput) return;
+      applyCustomScriptToClip(activeClip, captionScriptInput.value);
+      if (captionComposerDrawer) captionComposerDrawer.classList.add("hidden");
+    });
+  }
+
+  if (btnVoiceDictate) {
+    let activeRecognition = null;
+    btnVoiceDictate.addEventListener("click", () => {
+      const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRec) {
+        showToast("Voice dictation requires Chrome or Edge. Paste text directly above.", true);
+        return;
+      }
+      if (activeRecognition) {
+        try { activeRecognition.stop(); } catch (_) {}
+        activeRecognition = null;
+        btnVoiceDictate.querySelector("span").textContent = "Voice Dictate";
+        return;
+      }
+      activeRecognition = new SpeechRec();
+      activeRecognition.continuous = true;
+      activeRecognition.interimResults = true;
+      activeRecognition.lang = "en-US";
+      const baseText = captionScriptInput && captionScriptInput.value ? captionScriptInput.value.trim() + " " : "";
+      activeRecognition.onresult = (ev) => {
+        let spoken = "";
+        for (let i = 0; i < ev.results.length; i++) {
+          spoken += ev.results[i][0].transcript + " ";
+        }
+        if (captionScriptInput) captionScriptInput.value = (baseText + spoken).trim();
+      };
+      activeRecognition.onerror = () => {
+        activeRecognition = null;
+        btnVoiceDictate.querySelector("span").textContent = "Voice Dictate";
+        showToast("Microphone unavailable - type captions directly", true);
+      };
+      activeRecognition.onend = () => {
+        activeRecognition = null;
+        btnVoiceDictate.querySelector("span").textContent = "Voice Dictate";
+      };
+      activeRecognition.start();
+      btnVoiceDictate.querySelector("span").textContent = "Stop Listening";
+      showToast("Listening - speak captions for your clip");
+    });
+  }
+
+  if (captionSizeSelect) {
+    captionSizeSelect.addEventListener("change", () => {
+      if (activeClip) updateLiveSubtitles(previewVideo ? (isPlayingLiveSource ? previewVideo.currentTime : activeClip.start_time + (previewVideo.currentTime || 0)) : activeClip.start_time);
+    });
+  }
+  if (captionPosSelect) {
+    captionPosSelect.addEventListener("change", () => {
+      if (activeClip) updateLiveSubtitles(previewVideo ? (isPlayingLiveSource ? previewVideo.currentTime : activeClip.start_time + (previewVideo.currentTime || 0)) : activeClip.start_time);
+    });
+  }
+
+  function createCustomClipAtTime(startSec) {
+    if (!currentClips) return;
+    const total = Math.max(8, totalVideoDuration || 60);
+    const dur = Math.min(45, Math.max(5, total - startSec));
+    const clampedStart = Number(Math.max(0, Math.min(total - 5, startSec)).toFixed(2));
+    const clampedEnd = Number(Math.min(total, clampedStart + dur).toFixed(2));
+    const idxNum = currentClips.length + 1;
+    const newClip = {
+      id: `custom_clip_${Date.now()}`,
+      index: idxNum,
+      title: `Custom Cut #${idxNum}`,
+      hook_title: "CUSTOM STUDIO CUT",
+      category: "Custom",
+      category_tag: "hook",
+      start_time: clampedStart,
+      end_time: clampedEnd,
+      duration: Number((clampedEnd - clampedStart).toFixed(2)),
+      score: 95,
+      hook_score: 95,
+      retention_score: 94,
+      energy_score: 95,
+      viral_score: 95,
+      virality_breakdown: {
+        hook_score: 95,
+        retention_score: 94,
+        energy_score: 95,
+        reasoning: `Manual timeline slice created at ${formatTime(clampedStart)}.`,
+      },
+      hook_quote: "Type or paste custom captions for this slice in Add Script.",
+      summary: "Type or paste custom captions for this slice in Add Script.",
+      transcript_snippet: "Type or paste custom captions for this slice in Add Script.",
+      words: [
+        { word: "Custom", start: clampedStart, end: clampedStart + 1.5 },
+        { word: "clip", start: clampedStart + 1.5, end: clampedStart + 3.0 },
+        { word: "scene", start: clampedStart + 3.0, end: clampedStart + 5.0 },
+      ],
+      hashtags: ["#shorts", "#reels", "#klipnux"],
+      youtube_shorts_seo: {
+        title: `Custom Cut #${idxNum}`,
+        tags: ["#shorts", "#reels", "#klipnux"],
+      },
+      waveform_preview: (localClientSession && localClientSession.peaks) ? localClientSession.peaks.slice(0, 56).map((v) => Math.round(v * 100)) : undefined,
+    };
+    currentClips.push(newClip);
+    if (clipsFoundBadge) clipsFoundBadge.textContent = `${currentClips.length} Clips Found`;
+    if (countAll) countAll.textContent = String(currentClips.length);
+    buildDynamicCategoryFilters();
+    selectClip(newClip);
+    showToast(`Added Clip #${idxNum} at ${formatTime(clampedStart)}`);
+  }
+
+  if (btnAddNewClip) {
+    btnAddNewClip.addEventListener("click", () => {
+      const baseTime = activeClip ? Math.min(Math.max(0, (totalVideoDuration || 60) - 10), activeClip.end_time) : 0;
+      createCustomClipAtTime(baseTime);
+    });
+  }
+
+  if (timelineTrackContainer) {
+    timelineTrackContainer.addEventListener("click", (e) => {
+      if (e.target.closest(".heatmap-span")) return;
+      const rect = timelineTrackContainer.getBoundingClientRect();
+      const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / Math.max(1, rect.width)));
+      const clickedSec = pct * (totalVideoDuration || 60);
+      createCustomClipAtTime(clickedSec);
     });
   }
 
@@ -1934,7 +2384,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (transcriptHelpHint) {
         transcriptHelpHint.textContent = isEditWordsMode
           ? "Edit mode active: tap any word below to rename"
-          : 'Tap any word to jump playback or click "Edit Words" to adjust caption spelling';
+          : 'Tap any word to jump playback or click "Add Script" to write your own captions';
       }
       if (activeClip) renderInteractiveTranscript(activeClip);
     });
@@ -1959,12 +2409,32 @@ document.addEventListener("DOMContentLoaded", () => {
     renderInteractiveTranscript(activeClip);
     updateLiveStagePreview();
     if (refreshQueue) renderClipsQueue();
+
+    const isLocalLive = currentVideoInfo && currentVideoInfo.is_local && localClientSession;
     const rendered = renderedClipsMap[activeClip.id];
+
+    if (isLocalLive && (!rendered || rendered.signature !== getClipSignature(activeClip))) {
+      isPlayingLiveSource = true;
+      if (playerPlaceholder) playerPlaceholder.classList.add("hidden");
+      if (previewVideo) previewVideo.classList.remove("hidden");
+      if (btnToggleSound) btnToggleSound.classList.remove("hidden");
+      applyVideoStageTransform();
+      if (previewVideo && (previewVideo.currentTime < activeClip.start_time || previewVideo.currentTime > activeClip.end_time)) {
+        previewVideo.currentTime = activeClip.start_time;
+      }
+      updateLiveBanner();
+      updateLiveSubtitles(previewVideo ? previewVideo.currentTime : activeClip.start_time);
+      initWaveform(activeClip.waveform_preview);
+      return;
+    }
+
     if (rendered && rendered.signature !== getClipSignature(activeClip)) {
       previewVideo.pause();
       previewVideo.classList.add("hidden");
       playerPlaceholder.classList.remove("hidden");
       if (btnToggleSound) btnToggleSound.classList.add("hidden");
+      if (liveSubtitleTrack) liveSubtitleTrack.classList.add("hidden");
+      if (liveBannerOverlay) liveBannerOverlay.classList.add("hidden");
       renderStatusHint.textContent = "Edited - click Cut & Render Clip to update MP4";
     }
   }
@@ -2190,13 +2660,24 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function loadVideoPlayer(clipData) {
+    isPlayingLiveSource = false;
     if (stageErrorOverlay) stageErrorOverlay.classList.add("hidden");
     if (sourceYoutubeFrame) {
       sourceYoutubeFrame.src = "";
       sourceYoutubeFrame.classList.add("hidden");
     }
+    if (liveSubtitleTrack) liveSubtitleTrack.classList.add("hidden");
+    if (liveBannerOverlay) liveBannerOverlay.classList.add("hidden");
+    if (previewBackdrop) {
+      previewBackdrop.pause();
+      previewBackdrop.removeAttribute("src");
+      previewBackdrop.classList.add("hidden");
+    }
     playerPlaceholder.classList.add("hidden");
     previewVideo.classList.remove("hidden");
+    previewVideo.style.objectFit = "cover";
+    previewVideo.style.transform = "";
+    previewVideo.style.filter = "";
     if (btnToggleSound) btnToggleSound.classList.remove("hidden");
 
     const streamUrl = clipData.blob_url
@@ -2212,9 +2693,18 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     };
 
+    previewVideo.removeAttribute("data-live-url");
     previewVideo.src = streamUrl;
     previewVideo.playbackRate = speedSteps[speedIdx];
     previewVideo.load();
+
+    previewVideo.onplay = () => {
+      if (playPauseIcon) { playPauseIcon.setAttribute("data-lucide", "pause"); refreshIcons(); }
+    };
+    previewVideo.onpause = () => {
+      if (playPauseIcon) { playPauseIcon.setAttribute("data-lucide", "play"); refreshIcons(); }
+    };
+
     const playPromise = previewVideo.play();
     if (playPromise !== undefined) {
       playPromise.catch(() => {
@@ -2231,6 +2721,206 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  function updateLiveBanner() {
+    if (!liveBannerOverlay || !liveBannerOverlayText || !activeClip) return;
+    if (!isPlayingLiveSource) {
+      liveBannerOverlay.classList.add("hidden");
+      return;
+    }
+    const bannerOn = chkWorkspaceBanner ? chkWorkspaceBanner.checked : true;
+    if (bannerOn && activeClip.hook_title) {
+      liveBannerOverlayText.textContent = activeClip.hook_title.replace(/[\u{1F300}-\u{1FAFF}]/gu, "").trim();
+      liveBannerOverlay.classList.remove("hidden");
+    } else {
+      liveBannerOverlay.classList.add("hidden");
+    }
+  }
+
+  function updateLiveSubtitles(absT) {
+    if (!liveSubtitleTrack || !liveCaptionBox || !activeClip) return;
+    if (!isPlayingLiveSource) {
+      liveSubtitleTrack.classList.add("hidden");
+      return;
+    }
+    const words = getActiveWords(activeClip);
+    if (!words || !words.length) {
+      liveSubtitleTrack.classList.add("hidden");
+      return;
+    }
+
+    const curIdx = words.findIndex((w) => absT >= w.start && absT <= w.end);
+    const activeIdx = curIdx >= 0 ? curIdx : Math.max(0, words.findIndex((w) => absT < w.start));
+    if (activeIdx < 0 || activeIdx >= words.length) {
+      liveSubtitleTrack.classList.add("hidden");
+      return;
+    }
+
+    const capScale = captionSizeSelect ? (parseFloat(captionSizeSelect.value) || 1) : 1;
+    const capPos = captionPosSelect ? captionPosSelect.value : "bottom";
+    liveSubtitleTrack.style.bottom = capPos === "center" ? "44%" : capPos === "lower" ? "26%" : "12%";
+
+    const styleId = workspaceCaptionSelect ? workspaceCaptionSelect.value : (captionSelect ? captionSelect.value : "hormozi");
+    const groupSize = (styleId === "minimal" || styleId === "podcast") ? 4 : 3;
+    const groupStart = Math.floor(Math.max(0, activeIdx) / groupSize) * groupSize;
+    const chunkWords = words.slice(groupStart, groupStart + groupSize);
+
+    liveCaptionBox.className = `live-caption-box caption-style-${styleId}`;
+    liveCaptionBox.style.fontSize = `${Math.round(16 * capScale)}px`;
+    const isCaps = styleId === "hormozi" || styleId === "mrbeast" || styleId === "neon";
+    liveCaptionBox.innerHTML = chunkWords.map((w, idx) => {
+      const isWordActive = (groupStart + idx) === activeIdx;
+      const text = isCaps ? String(w.word || "").toUpperCase() : String(w.word || "");
+      let color = "#ffffff";
+      if (isWordActive) {
+        if (styleId === "mrbeast") color = "#ff2d2d";
+        else if (styleId === "tiktok") color = "#fe2c55";
+        else if (styleId === "neon") color = "#00ffff";
+        else if (styleId === "podcast") color = "#fbbf24";
+      } else {
+        if (styleId === "mrbeast") color = "#fde047";
+      }
+      return `<span class="${isWordActive ? "live-word-active" : ""}" style="color:${color};">${text}</span>`;
+    }).join(" ");
+
+    liveSubtitleTrack.classList.remove("hidden");
+  }
+
+  function togglePlayPause() {
+    if (!previewVideo || !previewVideo.src) return;
+    if (previewVideo.paused) {
+      previewVideo.play().then(() => {
+        if (playPauseIcon) { playPauseIcon.setAttribute("data-lucide", "pause"); refreshIcons(); }
+        if (isPlayingLiveSource && previewBackdrop && previewBackdrop.src && previewBackdrop.paused) previewBackdrop.play().catch(() => {});
+      }).catch(() => {});
+    } else {
+      previewVideo.pause();
+      if (playPauseIcon) { playPauseIcon.setAttribute("data-lucide", "play"); refreshIcons(); }
+      if (previewBackdrop && !previewBackdrop.paused) previewBackdrop.pause();
+    }
+  }
+
+  if (previewVideo) {
+    previewVideo.addEventListener("click", () => togglePlayPause());
+    previewVideo.addEventListener("play", () => {
+      if (playPauseIcon) { playPauseIcon.setAttribute("data-lucide", "pause"); refreshIcons(); }
+      if (isPlayingLiveSource && previewBackdrop && previewBackdrop.src && previewBackdrop.paused) previewBackdrop.play().catch(() => {});
+    });
+    previewVideo.addEventListener("pause", () => {
+      if (playPauseIcon) { playPauseIcon.setAttribute("data-lucide", "play"); refreshIcons(); }
+      if (previewBackdrop && !previewBackdrop.paused) previewBackdrop.pause();
+    });
+  }
+
+  if (btnPlayPause) btnPlayPause.addEventListener("click", togglePlayPause);
+  if (btnJumpBack) {
+    btnJumpBack.addEventListener("click", () => {
+      if (!previewVideo) return;
+      if (isPlayingLiveSource && activeClip) {
+        previewVideo.currentTime = Math.max(activeClip.start_time, previewVideo.currentTime - 2);
+      } else {
+        previewVideo.currentTime = Math.max(0, previewVideo.currentTime - 2);
+      }
+    });
+  }
+  if (btnJumpForward) {
+    btnJumpForward.addEventListener("click", () => {
+      if (!previewVideo) return;
+      if (isPlayingLiveSource && activeClip) {
+        previewVideo.currentTime = Math.min(activeClip.end_time - 0.15, previewVideo.currentTime + 2);
+      } else {
+        previewVideo.currentTime = Math.min(previewVideo.duration || 9999, previewVideo.currentTime + 2);
+      }
+    });
+  }
+  if (btnSetMarkIn) {
+    btnSetMarkIn.addEventListener("click", () => {
+      if (!activeClip || !previewVideo) return;
+      const cur = previewVideo.currentTime || 0;
+      const absNow = isPlayingLiveSource ? cur : (activeClip.start_time + cur);
+      if (absNow < activeClip.end_time - 2) {
+        activeClip.start_time = Number(Math.max(0, absNow).toFixed(2));
+        onClipEdited();
+        showToast(`Marked Start: ${formatTime(activeClip.start_time)}`);
+      } else {
+        showToast("Start point must stay before End point", true);
+      }
+    });
+  }
+  if (btnSetMarkOut) {
+    btnSetMarkOut.addEventListener("click", () => {
+      if (!activeClip || !previewVideo) return;
+      const cur = previewVideo.currentTime || 0;
+      const absNow = isPlayingLiveSource ? cur : (activeClip.start_time + cur);
+      if (absNow > activeClip.start_time + 2) {
+        activeClip.end_time = Number(Math.min(totalVideoDuration || 36000, absNow).toFixed(2));
+        onClipEdited();
+        showToast(`Marked End: ${formatTime(activeClip.end_time)}`);
+      } else {
+        showToast("End point must stay after Start point", true);
+      }
+    });
+  }
+
+  if (studioFilterSelect) {
+    studioFilterSelect.addEventListener("change", () => {
+      applyVideoStageTransform();
+      onClipEdited(false);
+    });
+  }
+  if (studioFitSelect) {
+    studioFitSelect.addEventListener("change", () => {
+      layoutSelect.value = studioFitSelect.value;
+      applyVideoStageTransform();
+      onClipEdited(false);
+    });
+  }
+  if (studioPanSelect) {
+    studioPanSelect.addEventListener("change", () => {
+      applyVideoStageTransform();
+      onClipEdited(false);
+    });
+  }
+  if (studioZoomSelect) {
+    studioZoomSelect.addEventListener("change", () => {
+      applyVideoStageTransform();
+      onClipEdited(false);
+    });
+  }
+
+  document.querySelectorAll(".hook-preset-pill").forEach((pill) => {
+    pill.addEventListener("click", () => {
+      if (!activeClip || !inputHookTitle) return;
+      const text = pill.dataset.hook;
+      inputHookTitle.value = text;
+      activeClip.hook_title = text;
+      onClipEdited(true);
+      showToast(`Hook updated: ${text}`);
+    });
+  });
+
+  window.addEventListener("keydown", (e) => {
+    if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) return;
+    if (e.code === "Space") {
+      e.preventDefault();
+      togglePlayPause();
+    } else if (e.code === "KeyJ" || e.code === "ArrowLeft") {
+      e.preventDefault();
+      if (btnJumpBack) btnJumpBack.click();
+    } else if (e.code === "KeyL" || e.code === "ArrowRight") {
+      e.preventDefault();
+      if (btnJumpForward) btnJumpForward.click();
+    } else if (e.code === "KeyK") {
+      e.preventDefault();
+      if (previewVideo) previewVideo.pause();
+    } else if (e.code === "KeyI") {
+      if (btnSetMarkIn) btnSetMarkIn.click();
+    } else if (e.code === "KeyO") {
+      if (btnSetMarkOut) btnSetMarkOut.click();
+    } else if (e.code === "KeyM") {
+      if (btnToggleSound) btnToggleSound.click();
+    }
+  });
+
   if (btnDownloadClip) {
     btnDownloadClip.addEventListener("click", async () => {
       if (!activeClip) return;
@@ -2241,7 +2931,7 @@ document.addEventListener("DOMContentLoaded", () => {
         triggerClipDownload(rendered, `klipnux_short_${activeClip.index}.mp4`);
         showToast(`Downloading Short #${activeClip.index}...`);
       } else {
-        showToast(`Cutting Short #${activeClip.index}...`);
+        showToast(`Rendering 1080p Short #${activeClip.index}...`);
         const clipData = await renderAndPlayClip(activeClip);
         if (clipData) {
           triggerClipDownload(clipData, `klipnux_short_${activeClip.index}.mp4`);
@@ -2265,15 +2955,21 @@ document.addEventListener("DOMContentLoaded", () => {
       speedIdx = (speedIdx + 1) % speedSteps.length;
       const rate = speedSteps[speedIdx];
       previewVideo.playbackRate = rate;
+      if (previewBackdrop) previewBackdrop.playbackRate = rate;
       btnPlaybackSpeed.textContent = `${rate}x`;
     });
   }
 
   function seekWaveformByClientX(clientX) {
-    if (!previewVideo || !previewVideo.duration || !waveformContainer) return;
+    if (!previewVideo || !waveformContainer) return;
     const rect = waveformContainer.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    previewVideo.currentTime = pct * previewVideo.duration;
+    const pct = Math.max(0, Math.min(1, (clientX - rect.left) / Math.max(1, rect.width)));
+    if (isPlayingLiveSource && activeClip) {
+      const dur = Math.max(1, activeClip.end_time - activeClip.start_time);
+      previewVideo.currentTime = activeClip.start_time + pct * dur;
+    } else if (previewVideo.duration) {
+      previewVideo.currentTime = pct * previewVideo.duration;
+    }
   }
 
   function initWaveform(peaksArray) {
@@ -2282,7 +2978,7 @@ document.addEventListener("DOMContentLoaded", () => {
       ? peaksArray
       : [35, 60, 75, 45, 88, 70, 40, 82, 95, 58, 68, 90, 52, 42, 78, 84, 62, 88, 96, 72, 48, 66, 80, 92, 84, 68, 56, 86, 94, 52, 44, 78, 90, 70, 58, 82, 96, 86, 62, 48, 72, 84, 92, 68, 54, 78, 88, 58];
 
-    waveformContainer.innerHTML = `<div id="waveformPlayhead" style="position: absolute; top: 0; bottom: 0; width: 2px; background: var(--brand-emerald); z-index: 20; pointer-events: none; left: 0%;"></div>`;
+    waveformContainer.innerHTML = `<div id="waveformCutRange" class="waveform-cut-range hidden"></div><div id="waveformPlayhead" style="position: absolute; top: 0; bottom: 0; width: 2px; background: var(--brand-emerald); z-index: 20; pointer-events: none; left: 0%;"></div>`;
     peaks.forEach((h) => {
       const bar = document.createElement("div");
       bar.className = "waveform-bar";
@@ -2290,6 +2986,15 @@ document.addEventListener("DOMContentLoaded", () => {
       bar.style.backgroundColor = "#d2d2d7";
       waveformContainer.appendChild(bar);
     });
+
+    const cutRange = document.getElementById("waveformCutRange");
+    if (cutRange && activeClip && totalVideoDuration > 0) {
+      const leftPct = Math.max(0, Math.min(95, (activeClip.start_time / totalVideoDuration) * 100));
+      const widthPct = Math.max(2, Math.min(100 - leftPct, (activeClip.duration / totalVideoDuration) * 100));
+      cutRange.style.left = `${leftPct}%`;
+      cutRange.style.width = `${widthPct}%`;
+      cutRange.classList.remove("hidden");
+    }
 
     let isDragging = false;
     waveformContainer.onpointerdown = (e) => {
@@ -2312,13 +3017,35 @@ document.addEventListener("DOMContentLoaded", () => {
   if (previewVideo) {
     previewVideo.addEventListener("timeupdate", () => {
       if (!activeClip) return;
-      const rel = previewVideo.currentTime || 0;
-      const dur = previewVideo.duration || activeClip.duration || 1;
+      let dur = Math.max(1, previewVideo.duration || activeClip.duration || 1);
+      let rel = previewVideo.currentTime || 0;
+      let absT = activeClip.start_time + rel;
+
+      if (isPlayingLiveSource) {
+        dur = Math.max(1, activeClip.end_time - activeClip.start_time);
+        if (previewVideo.currentTime >= activeClip.end_time - 0.08) {
+          previewVideo.currentTime = activeClip.start_time;
+          if (previewBackdrop && previewBackdrop.src) previewBackdrop.currentTime = activeClip.start_time;
+          rel = 0;
+        } else if (previewVideo.currentTime < activeClip.start_time - 0.35) {
+          previewVideo.currentTime = activeClip.start_time;
+          rel = 0;
+        } else {
+          rel = Math.max(0, Math.min(dur, previewVideo.currentTime - activeClip.start_time));
+        }
+        absT = activeClip.start_time + rel;
+      }
+
       const pct = Math.min(100, Math.max(0, (rel / dur) * 100));
 
       const ph = document.getElementById("waveformPlayhead");
       if (ph) ph.style.left = `${pct}%`;
       if (waveformTimecode) waveformTimecode.textContent = `${formatTime(rel)} / ${formatTime(dur)}`;
+      if (playheadTimecode) playheadTimecode.textContent = `${formatTime(rel)} / ${formatTime(dur)}`;
+
+      if (isPlayingLiveSource && previewBackdrop && previewBackdrop.src && !previewBackdrop.paused && Math.abs(previewBackdrop.currentTime - previewVideo.currentTime) > 0.28) {
+        previewBackdrop.currentTime = previewVideo.currentTime;
+      }
 
       const bars = document.querySelectorAll("#waveformContainer .waveform-bar");
       const activeIdx = Math.floor((pct / 100) * bars.length);
@@ -2326,12 +3053,14 @@ document.addEventListener("DOMContentLoaded", () => {
         b.style.backgroundColor = idx <= activeIdx ? "var(--brand-violet)" : "#d2d2d7";
       });
 
-      const absT = activeClip.start_time + rel;
       document.querySelectorAll(`#inspectorTranscriptBox .transcript-word[data-clip-id="${activeClip.id}"]`).forEach((el) => {
         const s = parseFloat(el.dataset.start);
         const e = parseFloat(el.dataset.end);
         el.classList.toggle("active-word", absT >= s && absT <= e);
       });
+
+      updateLiveSubtitles(absT);
+      updateLiveBanner();
     });
   }
 
